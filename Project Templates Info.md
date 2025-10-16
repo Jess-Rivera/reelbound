@@ -1,8 +1,4 @@
-Perfect 👌 — here’s a **ready-to-import GitHub Projects template** designed specifically for your *solo dev → concept-to-code* workflow in **Slotspire**.
-You can either recreate it manually (takes 5 min) or I can generate a JSON you can import.
-Let’s look at the structure first.
 
----
 
 ## 🧱 **Project Board Template: “Slotspire Development Flow”**
 
