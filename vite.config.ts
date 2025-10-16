@@ -4,6 +4,8 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import { resolve } from "node:path";
 
 export default defineConfig({
+  // --- Base URL ---
+  base: process.env.VITE_BASE ?? "/",
   // --- Plugins ---
   plugins: [
     tsconfigPaths({ projects: [resolve(__dirname, "tsconfig.json")] }),

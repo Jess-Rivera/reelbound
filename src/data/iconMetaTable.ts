@@ -1,5 +1,5 @@
 import { IconMetaTable } from "../types/index";
-
+import {asset} from "src/data/paths"
 
 export const iconMeta: IconMetaTable = {
   lemon: {
@@ -13,7 +13,7 @@ export const iconMeta: IconMetaTable = {
     rarity: 'common',
     synergyGroup: 'fruit_set',
     effects: [],
-    spriteUrl: '/assets/lemon.png',
+    spriteUrl: asset("lemon.png"),
   },
   cherry: {
     id: 'cherry',
@@ -26,7 +26,7 @@ export const iconMeta: IconMetaTable = {
     rarity: 'common',
     synergyGroup: 'fruit_set',
     effects: [],
-    spriteUrl: '/assets/cherry.png',
+    spriteUrl: asset("cherry.png"),
   },
   melon: {
     id: 'melon',
@@ -39,7 +39,7 @@ export const iconMeta: IconMetaTable = {
     rarity: 'common',
     synergyGroup: 'fruit_set',
     effects: [],
-    spriteUrl: '/assets/melon.png',
+    spriteUrl: asset("melon.png"),
   },
   grape: {
     id: 'grape',
@@ -52,7 +52,7 @@ export const iconMeta: IconMetaTable = {
     rarity: 'common',
     synergyGroup: 'fruit_set',
     effects: [],
-    spriteUrl: '/assets/grape.png',
+    spriteUrl: asset("grape.png"),
   },
   bell: {
     id: 'bell',
@@ -65,7 +65,7 @@ export const iconMeta: IconMetaTable = {
     rarity: 'uncommon',
     synergyGroup: 'classic_set',
     effects: [],
-    spriteUrl: '/assets/bell.png',
+    spriteUrl: asset("bell.png"),
   },
   seven: {
     id: 'seven',
@@ -78,7 +78,7 @@ export const iconMeta: IconMetaTable = {
     rarity: 'rare',
     synergyGroup: 'classic_set',
     effects: [],
-    spriteUrl: '/assets/seven.png',
+    spriteUrl: asset("seven.png"),
   },
   bar:{
     id: 'bar',
@@ -91,7 +91,7 @@ export const iconMeta: IconMetaTable = {
     rarity: 'uncommon',
     synergyGroup: 'classic_set',
     effects: [],
-    spriteUrl: '/assets/bar.png',
+    spriteUrl: asset("bar.png"),
   },
   diamond: {
     id: 'diamond',
@@ -104,7 +104,7 @@ export const iconMeta: IconMetaTable = {
     rarity: 'epic',
     synergyGroup: 'gem_set',
     effects: [],
-    spriteUrl: '/assets/diamond.png',
+    spriteUrl: asset("diamond.png"),
   },
   star: {
     id: 'star',
@@ -117,7 +117,7 @@ export const iconMeta: IconMetaTable = {
     rarity: 'legendary',
     synergyGroup: 'celestial_set',
     effects: [],
-    spriteUrl: '/assets/star.png',
+    spriteUrl: asset("star.png"),
   }
   // …add more icons as you go
 } as const satisfies IconMetaTable;
