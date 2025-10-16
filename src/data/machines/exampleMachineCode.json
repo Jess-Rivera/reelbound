@@ -1,0 +1,24 @@
+
+# Explicit machine (full custom pool, does not inherit defaults)
+{
+  "id": "classic_cassie",
+  "name": "Classic Cassie",
+  "gridWidth": 3,
+  "gridHeight": 3,
+  "inheritDefaults": false,
+  "pool": { "lemon": 20, "grapes": 16, "melon": 14, "cherry": 12, "banana": 10, "orange": 10, "plum": 9, "diamond": 4 },
+  "themeColor": "#ff6a5b"
+}
+
+# Implicit machine (inherits default pool, customizes weights and excludes plum)
+{
+  "id": "stretchy_sam",
+  "name": "Stretchy Sam",
+  "gridWidth": 5,
+  "gridHeight": 3,
+  "inheritDefaults": true,
+  "defaultNewIconWeight": 0,
+  "weightDeltas": { "lemon": 5, "diamond": -2 },
+  "exclude": ["plum"],
+  "themeColor": "#47b4ff"
+}

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "id": "classic_cassie",
+  "name": "Classic Cassie",
+  "gridWidth": 3,
+  "gridHeight": 3,
+  "totalHeat": 100,            
+  "onFireCurvepp": 0.33,
+  "corruptionpp": 0.66,  
+
+  "inheritDefaults": true,
+  "defaultNewIconWeight": 0,
+  "weightDeltas": { "lemon": 5, "diamond": -2 },
+  
+  "exclude": [],
+
+  "overrides": {
+    "lemon": {
+      "basemult": 1.1,
+      "addEffects": [
+        { "kind": "bias_icon", "hook": "on_spin", "target": "lemon", "weightDelta": 2 }
+      ]
+    }
+  },
+
+  "themeColor": "#ff6a5b",
+  "volatility": 1.0,
+  "extras": {
+    "enableDiagonals": true,
+    "minRunLength": 3,
+    "payoutFormula": "basemult_times_run"
+  }
+}

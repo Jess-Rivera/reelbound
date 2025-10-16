@@ -1,0 +1,8 @@
+{
+  "entryPoints": ["src"],
+  "out": "docs/api",
+  "excludePrivate": true,
+  "excludeExternals": true,
+  "hideGenerator": true,
+  "plugin": ["typedoc-plugin-markdown"]
+}
