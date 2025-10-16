@@ -1,0 +1,13 @@
+Run Locally 
+npm run dev
+
+
+Run Production from GH and run
+npm run build:gh && npm run preview
+add /reelbound/ to the link
+
+
+HOW to push
+git add .   // stage changes
+git commit -m "insert what i did"
+git push origin main
