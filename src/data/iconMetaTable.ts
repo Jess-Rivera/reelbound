@@ -1,5 +1,5 @@
 import { IconMetaTable } from "../types/index";
-import {asset} from "src/data/paths"
+import {asset} from "../data/paths"
 
 export const iconMeta: IconMetaTable = {
   lemon: {

@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:gh": "vite build --mode ghpages",
+    "build:local": "VITE_BASE=/ vite build",
     "preview": "vite preview",
+    "build:deploy": "vite build",
+    "preview:deploy": "vite build && vite preview",
     "test": "vitest --ui",
     "lint": "eslint src --ext .ts", 
     "format": "prettier --write .", 

@@ -19,7 +19,7 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm ci
-      - run: npm run build
+      - run: npm run build:gh
         env:
           VITE_BASE: /reelbound/   # <-- set your repo subpath here
       - uses: actions/upload-pages-artifact@v3
