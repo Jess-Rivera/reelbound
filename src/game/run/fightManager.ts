@@ -1,4 +1,11 @@
-//code
+import {
+  FightConfig,
+  RoundState,
+  SpinResult,
+  RoundOutcome,
+  FightOutcome
+} from "../types";
+import { createRoundManager } from "./roundManager";
 
 
 export interface FightManager {

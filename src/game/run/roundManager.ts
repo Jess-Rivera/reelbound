@@ -24,14 +24,22 @@ export interface SlotMachinePort {
  * External surface for the round manager state machine that owns a single round lifecycle.
  */
 export interface RoundManager {
+    /** Starts a new round run using the provided configuration and initial state. */
     start(config: RoundConfig, initial: RoundState): void;
+    /** Returns true while the round still has spins remaining. */
     canSpin(): boolean;
+    /** Executes one spin and returns both the spin outcome and current round state snapshot. */
     spin(): {spin: SpinResult; state: RoundState};
+    /** Finalizes the round and emits the aggregate outcome for downstream systems. */
     finish(): RoundOutcome;
 }
 
 /**
  * Builds a fresh round manager that tracks spins, heat, and a log for the given slot machine.
+ *
+ * @param machine Abstraction over the slot machine used to request spins.
+ * @param heat Heat system responsible for tier classification and heat adjustments.
+ * @returns A stateful round manager that coordinates spins and aggregates results.
  */
 export function createRoundManager(machine: SlotMachinePort, heat: HeatSystem): RoundManager {
     let cfg: RoundConfig;
