@@ -2,24 +2,35 @@ import { buildRuntime, SlotMachine } from './core/slotMachine';
 import { ReelHandler } from './core/reelHandler';
 import { iconMeta } from './data/iconMetaTable';
 import machineConfigData from './data/machines/selectableMachines.json';
-import { isMachineConfig, MachineConfig, RNG, ICONS, makeGrid, IconId } from './types/index';
+import { isMachineConfig, MachineConfig, RNG, RNGSeed, ICONS, makeGrid, IconId } from './types/index';
 
 class SimpleRNG implements RNG {
-  private state = Date.now() >>> 0;
+  private state: number;
 
-  next(): number {
-    this.state = (1664525 * this.state + 1013904223) >>> 0;
-    return this.state / 0x100000000;
+  constructor(seed?: RNGSeed) {
+    this.state =
+      typeof seed === 'undefined'
+        ? Date.now() >>> 0
+        : this.hashSeed(seed);
   }
 
-  setSeed(seed: number | string): void {
+  private hashSeed(seed: RNGSeed): number {
     const text = seed.toString();
     let hash = 2166136261;
     for (let i = 0; i < text.length; i++) {
       hash ^= text.charCodeAt(i);
       hash = Math.imul(hash, 16777619);
     }
-    this.state = hash >>> 0;
+    return hash >>> 0;
+  }
+
+  next(): number {
+    this.state = (1664525 * this.state + 1013904223) >>> 0;
+    return this.state / 0x100000000;
+  }
+
+  setSeed(seed: RNGSeed): void {
+    this.state = this.hashSeed(seed);
   }
 }
 
@@ -32,7 +43,7 @@ async function bootstrap() {
     console.log('[Slotspire]', ...lines);
   };
 
-  print(['Bootstrapping…']);
+  print(['Bootstrapping...']);
 
   const cfgCandidate = machineConfigData as unknown;
   if (!isMachineConfig(cfgCandidate)) {
@@ -42,7 +53,21 @@ async function bootstrap() {
   const machineConfig = cfgCandidate as MachineConfig;
 
   const runtime = buildRuntime(machineConfig, iconMeta);
-  const rng = new SimpleRNG();
+  const params = new URLSearchParams(window.location.search);
+  const seedParam = params.get('seed') ?? params.get('rngSeed');
+  const rng = new SimpleRNG(seedParam ?? undefined);
+
+  if (typeof window !== 'undefined') {
+    const globalWithDebug = window as typeof window & {
+      slotspireDebug?: { setSeed(seed: RNGSeed): void };
+    };
+    const existingDebug = globalWithDebug.slotspireDebug ?? {};
+    globalWithDebug.slotspireDebug = {
+      ...existingDebug,
+      setSeed: (seed: RNGSeed) => rng.setSeed(seed),
+    };
+  }
+
   const slotMachine = new SlotMachine(runtime, rng);
 
   const reel = new ReelHandler('#reels');
@@ -59,11 +84,13 @@ async function bootstrap() {
   if (machineLabel) {
     machineLabel.textContent = runtime.name;
   }
+  const seedInfo = seedParam ?? '(time-based start)';
 
   print([
     `Machine: ${runtime.name}`,
-    `Grid: ${runtime.gridWidth}×${runtime.gridHeight}`,
+    `Grid: ${runtime.gridWidth}x${runtime.gridHeight}`,
     `Available icons: ${Object.keys(runtime.icons).length}`,
+    `RNG seed: ${seedInfo}`,
     '',
     'Press SPIN to generate a result.',
   ]);
