@@ -13,3 +13,4 @@ yarn-error.log*
 !.vscode/extensions.json
 .idea
 docs/api
+/repo-backup.git/
