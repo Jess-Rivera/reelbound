@@ -6,19 +6,6 @@ npm run dev
 npm run build:gh && npm run preview
 add /reelbound/ to the link
 
-#Checkout from dev and push to dev
-git checkout dev
-git pull origin dev
-# do your work
-git add .
-git commit -m "your changes"
-git push origin dev
-#When stable and ready to merge to main
-git checkout main
-git pull origin main
-git merge dev
-git push origin main
-
 
 
 #First time clone

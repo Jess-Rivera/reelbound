@@ -28,10 +28,28 @@ export interface RoundConfig {
 
 export interface RoundState {
     spinsRemaining: number;
-    creditsThisRounds: number;
+    creditsThisRound: number;
     heat: number;
 }
 
 export interface RoundOutcome {
     success: boolean;
+    creditsGained: number;
+    heatEnd: number;
+    damageTaken?: number;
+    log: string[];
+}
+
+export interface FightConfig {
+    rounds: number;
+    round: RoundConfig;
+    enemyTier: number;
+}
+
+export interface FightOutcome {
+    success: boolean;
+    ticketsEarned: number;
+    totalCredits: number;
+    heatEnd: number;
+    log: string[];
 }
