@@ -26,7 +26,7 @@
       }
 
       main {
-        width: min(960px, 100%);
+        width: min(1200px, 100%);
         display: grid;
         gap: 24px;
         grid-template-columns: 1.1fr 1fr;
@@ -51,6 +51,12 @@
         font-size: clamp(1.6rem, 4vw, 2rem);
         letter-spacing: 0.08em;
         text-transform: uppercase;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1.1rem;
+        letter-spacing: 0.05em;
       }
 
       #machine-name {
@@ -100,6 +106,12 @@
         box-shadow: none;
       }
 
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
       #debug {
         font-family: "JetBrains Mono", "Fira Mono", monospace;
         font-size: 0.75rem;
@@ -108,6 +120,33 @@
         max-height: 220px;
         overflow-y: auto;
         white-space: pre-wrap;
+      }
+
+      #reel-inspector {
+        grid-column: 1 / -1;
+        min-height: 200px;
+      }
+
+      #reel-inspector-content {
+        background: rgba(13, 17, 26, 0.5);
+        border-radius: 8px;
+        min-height: 150px;
+      }
+
+      .toggle-button {
+        background: rgba(65, 102, 245, 0.2);
+        color: #8da2cb;
+        font-size: 0.85rem;
+        padding: 8px 16px;
+      }
+
+      .toggle-button:hover {
+        background: rgba(65, 102, 245, 0.3);
+        color: #fff;
+      }
+
+      .hidden {
+        display: none;
       }
 
       @media (max-width: 840px) {
@@ -137,9 +176,19 @@
       </section>
 
       <aside class="card" id="info-card">
-        <h2 style="margin:0;">Debug</h2>
+        <h2>Debug</h2>
         <pre id="debug">(waiting for first spin)</pre>
       </aside>
+
+      <section class="card" id="reel-inspector">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2>Reel Strip Inspector</h2>
+          <button class="toggle-button" id="toggle-inspector">
+            Hide Inspector
+          </button>
+        </div>
+        <div id="reel-inspector-content"></div>
+      </section>
     </main>
 
     <script type="module" src="/src/main.ts"></script>

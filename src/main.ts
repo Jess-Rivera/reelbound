@@ -1,8 +1,9 @@
 import { buildRuntime, SlotMachine } from './core/slotMachine';
 import { ReelHandler } from './core/reelHandler';
+import { ReelInspector } from './ui/reelInspector';
 import { iconMeta } from './data/iconMetaTable';
 import machineConfigData from './data/machines/selectableMachines.json';
-import { isMachineConfig, MachineConfig, RNG, RNGSeed, ICONS, makeGrid, IconId } from './types/index';
+import { isMachineConfig, MachineConfig, RNG, RNGSeed, ICONS, IconId } from './types/index';
 
 class SimpleRNG implements RNG {
   private state: number;
@@ -57,23 +58,76 @@ async function bootstrap() {
   const seedParam = params.get('seed') ?? params.get('rngSeed');
   const rng = new SimpleRNG(seedParam ?? undefined);
 
-  if (typeof window !== 'undefined') {
-    const globalWithDebug = window as typeof window & {
-      slotspireDebug?: { setSeed(seed: RNGSeed): void };
-    };
-    const existingDebug = globalWithDebug.slotspireDebug ?? {};
-    globalWithDebug.slotspireDebug = {
-      ...existingDebug,
-      setSeed: (seed: RNGSeed) => rng.setSeed(seed),
-    };
-  }
-
   const slotMachine = new SlotMachine(runtime, rng);
 
   const reel = new ReelHandler('#reels');
   await reel.loadIcons(iconMeta);
-  const placeholder = makeGrid(runtime.gridWidth, runtime.gridHeight, ICONS[0] as IconId);
-  reel.render(placeholder);
+  
+  // Initialize Reel Inspector
+  const inspector = new ReelInspector('#reel-inspector-content');
+  await inspector.loadIcons(iconMeta);
+  
+  // Function to update inspector display
+  const updateInspector = () => {
+    const reelStrips = slotMachine.getAllReelStrips();
+    const positions = slotMachine.getReelPositions();
+    inspector.render(reelStrips, positions);
+  };
+  
+  // Helper function to get reel composition summary
+  const getReelComposition = () => {
+    const reelStrips = slotMachine.getAllReelStrips();
+    return reelStrips.map((strip, idx) => {
+      const counts: Record<string, number> = {};
+      strip.forEach(icon => {
+        counts[icon] = (counts[icon] || 0) + 1;
+      });
+      const summary = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([icon, count]) => `${icon}:${count}`)
+        .join(' ');
+      return `Reel ${idx + 1}: ${summary}`;
+    });
+  };
+  
+  // Expose debug interface (all at once)
+  if (typeof window !== 'undefined') {
+    const globalWithDebug = window as typeof window & {
+      slotspireDebug?: { 
+        setSeed(seed: RNGSeed): void;
+        regenerateReels(): void;
+        slotMachine: SlotMachine;
+      };
+    };
+    globalWithDebug.slotspireDebug = {
+      setSeed: (seed: RNGSeed) => rng.setSeed(seed),
+      regenerateReels: () => {
+        slotMachine.regenerateReels();
+        updateInspector();
+        reel.render(slotMachine.getVisibleGrid());
+        print(['Reels regenerated!', '', ...getReelComposition()]);
+      },
+      slotMachine,
+    };
+  }
+  
+  // Show initial state
+  updateInspector();
+  const initialGrid = slotMachine.getVisibleGrid();
+  reel.render(initialGrid);
+  
+  // Toggle inspector visibility
+  const toggleButton = document.querySelector<HTMLButtonElement>('#toggle-inspector');
+  const inspectorContent = document.querySelector<HTMLElement>('#reel-inspector-content');
+  let inspectorVisible = true;
+  
+  if (toggleButton && inspectorContent) {
+    toggleButton.addEventListener('click', () => {
+      inspectorVisible = !inspectorVisible;
+      inspectorContent.classList.toggle('hidden', !inspectorVisible);
+      toggleButton.textContent = inspectorVisible ? 'Hide Inspector' : 'Show Inspector';
+    });
+  }
 
   const spinButton = document.querySelector<HTMLButtonElement>('#spin');
   if (!spinButton) {
@@ -92,62 +146,71 @@ async function bootstrap() {
     `Available icons: ${Object.keys(runtime.icons).length}`,
     `RNG seed: ${seedInfo}`,
     '',
-    'Press SPIN to generate a result.',
+    'Reel Strip Composition:',
+    ...getReelComposition(),
+    '',
+    'Press SPIN to start.',
   ]);
 
   spinButton.addEventListener('click', async () => {
-  spinButton.disabled = true;  // prevent double-clicks
-  
-  const result = slotMachine.spin();
-  
-  // Animate the spin!
-  await reel.animate(result.grid);
-  
-  spinButton.disabled = false;
-  
-  const lines: string[] = [
-    `Payout: ${result.payout.toFixed(2)}`,
-    '',
-    'Grid:',
-    result.grid.map((row: IconId[]) => row.join(' ')).join('\n'),
-  ];
+    spinButton.disabled = true;
+    
+    const result = slotMachine.spin();
+    
+    // Get reel strips for animation
+    const reelStrips = slotMachine.getAllReelStrips();
+    
+    // Animate with actual reel strips
+    await reel.animateWithReels(result.grid, reelStrips);
+    
+    // Update inspector to show new positions
+    updateInspector();
+    
+    spinButton.disabled = false;
+    
+    const lines: string[] = [
+      `Payout: ${result.payout.toFixed(2)}`,
+      '',
+      'Grid:',
+      result.grid.map((row: IconId[]) => row.join(' ')).join('\n'),
+    ];
 
-  if (result.patterns && result.patterns.length > 0) {
-    lines.push('', 'Wins:');
-    let runningTotal = 0;
-    for (const pattern of result.patterns) {
-      const firstCell = pattern.cells[0];
-      const sameRow = pattern.cells.every(({ r }) => r === firstCell.r);
-      const sameCol = pattern.cells.every(({ c }) => c === firstCell.c);
-      const orientation =
-        pattern.type === 'diagonal'
-          ? 'Diagonal'
-          : sameRow
-            ? 'Horizontal'
-            : sameCol
-              ? 'Vertical'
-              : 'Line';
-      const length = pattern.cells.length;
-      const icon = pattern.icons[0];
-      const iconInfo = runtime.icons[icon];
-      const iconName = iconMeta[icon]?.id ?? icon;
-      const baseMult = iconInfo?.basemult ?? 1;
-      runningTotal += pattern.multiplier;
-      lines.push(
-        `${orientation} ${length}x ${iconName}: ${baseMult} x ${length} = ${pattern.multiplier.toFixed(
-          2
-        )}`
-      );
+    if (result.patterns && result.patterns.length > 0) {
+      lines.push('', 'Wins:');
+      let runningTotal = 0;
+      for (const pattern of result.patterns) {
+        const firstCell = pattern.cells[0];
+        const sameRow = pattern.cells.every(({ r }) => r === firstCell.r);
+        const sameCol = pattern.cells.every(({ c }) => c === firstCell.c);
+        const orientation =
+          pattern.type === 'diagonal'
+            ? 'Diagonal'
+            : sameRow
+              ? 'Horizontal'
+              : sameCol
+                ? 'Vertical'
+                : 'Line';
+        const length = pattern.cells.length;
+        const icon = pattern.icons[0];
+        const iconInfo = runtime.icons[icon];
+        const iconName = iconMeta[icon]?.id ?? icon;
+        const baseMult = iconInfo?.basemult ?? 1;
+        runningTotal += pattern.multiplier;
+        lines.push(
+          `${orientation} ${length}x ${iconName}: ${baseMult} x ${length} = ${pattern.multiplier.toFixed(
+            2
+          )}`
+        );
+      }
+      if (Math.abs(runningTotal - result.payout) > 1e-6) {
+        lines.push('', `Payout mismatch: breakdown total ${runningTotal.toFixed(2)} vs result ${result.payout.toFixed(2)}`);
+      }
+    } else {
+      lines.push('', 'Wins: none');
     }
-    if (Math.abs(runningTotal - result.payout) > 1e-6) {
-      lines.push('', `Payout mismatch: breakdown total ${runningTotal.toFixed(2)} vs result ${result.payout.toFixed(2)}`);
-    }
-  } else {
-    lines.push('', 'Wins: none');
-  }
 
-  print(lines);
-});
+    print(lines);
+  });
 }
 
 bootstrap().catch((err) => {
@@ -162,5 +225,4 @@ bootstrap().catch((err) => {
     debugPanel.textContent = `Bootstrap failed:\n${message}`;
   }
   console.error('Failed to bootstrap slot machine', err);
-    });
-
+});

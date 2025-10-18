@@ -9,9 +9,9 @@ import {
   WinPattern,
   RNG,
   ICONS,
+  RNGSeed,
 } from "../types/index";
 import { defaultPool as DEFAULT_ICON_POOL } from "../data/defaultPool";
-
 
 /* ------------------------------
    Runtime builder (merges config)
@@ -88,17 +88,74 @@ export function buildRuntime(
 }
 
 /* ------------------------------
-   SlotMachine (math/RNG only)
+   Reel Strip Generation
+   ------------------------------ */
+
+/**
+ * Generate reel strips by distributing the exact icon pool across all reels.
+ * The pool is completely consumed - no icons are added or removed from the total.
+ * @param icons - Icon pool with weights (weights = count of that icon)
+ * @param numReels - Number of reel strips to generate
+ * @param rng - Random number generator for shuffling
+ */
+export function generateReelStrips(
+  icons: Record<IconId, EffectiveIconInfo>,
+  numReels: number,
+  rng: RNG
+): IconId[][] {
+  // Step 1: Build a flat pool of all icons based on their weights
+  const pool: IconId[] = [];
+  
+  for (const [id, info] of Object.entries(icons) as [IconId, EffectiveIconInfo][]) {
+    const count = Math.floor(info.weight);
+    for (let i = 0; i < count; i++) {
+      pool.push(id);
+    }
+  }
+  
+  if (pool.length === 0) {
+    // Fallback: no icons in pool
+    const fallbackIcon = (ICONS[0] as IconId);
+    return Array(numReels).fill([fallbackIcon]);
+  }
+  
+  // Step 2: Shuffle the entire pool using Fisher-Yates
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  
+  // Step 3: Distribute icons evenly across reels
+  const baseLength = Math.floor(pool.length / numReels);
+  const remainder = pool.length % numReels;
+  
+  const reelStrips: IconId[][] = [];
+  let poolIndex = 0;
+  
+  for (let reelIdx = 0; reelIdx < numReels; reelIdx++) {
+    // Some reels get one extra icon if there's a remainder
+    const thisReelLength = baseLength + (reelIdx < remainder ? 1 : 0);
+    const strip: IconId[] = [];
+    
+    for (let i = 0; i < thisReelLength; i++) {
+      strip.push(pool[poolIndex++]);
+    }
+    
+    reelStrips.push(strip);
+  }
+  
+  return reelStrips;
+}
+
+/* ------------------------------
+   SlotMachine (with reel strips)
    ------------------------------ */
 
 export class SlotMachine {
   private width: number;
   private height: number;
-
-  // weighted sampler tables
-  private ids: IconId[] = [];
-  private cum: number[] = [];
-  private total = 0;
+  private reelStrips: IconId[][] = [];
+  private reelPositions: number[] = [];
 
   constructor(
     private runtime: MachineRuntime,
@@ -106,47 +163,90 @@ export class SlotMachine {
   ) {
     this.width = runtime.gridWidth;
     this.height = runtime.gridHeight;
-    this.rebuildSampler();
+    this.initializeReels();
   }
 
-  /** Recompute cumulative weights (call if you mutate runtime icons) */
-  private rebuildSampler() {
-    this.ids = [];
-    this.cum = [];
-    this.total = 0;
-
-    for (const id of Object.keys(this.runtime.icons) as IconId[]) {
-      const w = this.runtime.icons[id]?.weight ?? 0;
-      if (w > 0) {
-        this.total += w;
-        this.ids.push(id);
-        this.cum.push(this.total);
-      }
+  /** Generate reel strips for each column by distributing the exact pool */
+  private initializeReels() {
+    // Generate all reel strips at once (pool is consumed exactly)
+    this.reelStrips = generateReelStrips(this.runtime.icons, this.width, this.rng);
+    this.reelPositions = [];
+    
+    // Start each reel at a random position
+    for (let col = 0; col < this.width; col++) {
+      const stripLength = this.reelStrips[col].length;
+      this.reelPositions.push(Math.floor(this.rng.next() * stripLength));
     }
   }
 
-  /** Draw one IconId using cumulative weights */
-  private sample(): IconId {
-    if (this.total <= 0 || this.ids.length === 0) {
-      // Failsafe: no weights → just return first known icon
-      return this.ids[0] ?? (ICONS[0] as IconId);
-    }
-    const r = this.rng.next() * this.total;
-    const i = lowerBound(this.cum, r);
-    return this.ids[i]!;
-  }
-
-  /** Produce a rectangular grid by weighted sampling */
-  private buildGrid(): IconId[][] {
+  /** Get the current visible grid based on reel positions */
+  getVisibleGrid(): IconId[][] {
     const grid: IconId[][] = [];
-    for (let r = 0; r < this.height; r++) {
-      const row: IconId[] = [];
-      for (let c = 0; c < this.width; c++) {
-        row.push(this.sample());
+    
+    for (let row = 0; row < this.height; row++) {
+      const gridRow: IconId[] = [];
+      for (let col = 0; col < this.width; col++) {
+        const strip = this.reelStrips[col];
+        const pos = (this.reelPositions[col] + row) % strip.length;
+        gridRow.push(strip[pos]);
       }
-      grid.push(row);
+      grid.push(gridRow);
     }
+    
     return grid;
+  }
+
+  /** Get a preview of the reel strip for a specific column */
+  getReelPreview(col: number, visibleCount: number = 10): IconId[] {
+    if (col < 0 || col >= this.reelStrips.length) {
+      return [];
+    }
+    
+    const strip = this.reelStrips[col];
+    const pos = this.reelPositions[col];
+    const preview: IconId[] = [];
+    
+    for (let i = 0; i < visibleCount; i++) {
+      preview.push(strip[(pos + i) % strip.length]);
+    }
+    
+    return preview;
+  }
+
+  /** Get all reel strips (for debugging/display) */
+  getAllReelStrips(): IconId[][] {
+    return this.reelStrips.map(strip => [...strip]);
+  }
+
+  /** Get current reel positions (for debugging) */
+  getReelPositions(): number[] {
+    return [...this.reelPositions];
+  }
+
+  /** Regenerate reels with a new seed (useful for testing) */
+  regenerateReels(seed?: RNGSeed): void {
+    if (seed !== undefined) {
+      this.rng.setSeed(seed);
+    }
+    this.initializeReels();
+  }
+
+  /** Advance reels by random amounts */
+  private advanceReels(): void {
+    for (let col = 0; col < this.width; col++) {
+      const stripLength = this.reelStrips[col].length;
+      // Advance each reel by a random amount (minimum 1 full rotation)
+      const minAdvance = stripLength;
+      const extraAdvance = Math.floor(this.rng.next() * stripLength);
+      const advance = minAdvance + extraAdvance;
+      
+      this.reelPositions[col] = (this.reelPositions[col] + advance) % stripLength;
+    }
+  }
+
+  /** Build grid from current reel positions */
+  private buildGrid(): IconId[][] {
+    return this.getVisibleGrid();
   }
 
   /** Evaluate simple lines/diagonals: any run of 3+ identical icons */
@@ -158,12 +258,11 @@ export class SlotMachine {
       if (cells.length < 3) return;
       const id = grid[cells[0].r][cells[0].c];
       const base = this.runtime.icons[id]?.basemult ?? 1;
-      // Simple scoring: basemult * runLength
       const amount = base * cells.length;
       payout += amount;
       pats.push({
         type: "line",
-        multiplier: amount, // using this field as contribution for now
+        multiplier: amount,
         cells,
         icons: cells.map(({ r, c }) => grid[r][c]),
       });
@@ -173,8 +272,7 @@ export class SlotMachine {
     for (let r = 0; r < this.height; r++) {
       let start = 0;
       for (let c = 1; c <= this.width; c++) {
-        const same =
-          c < this.width && grid[r][c] === grid[r][start];
+        const same = c < this.width && grid[r][c] === grid[r][start];
         if (!same) {
           addRun(rangeCellsRow(r, start, c - 1));
           start = c;
@@ -186,8 +284,7 @@ export class SlotMachine {
     for (let c = 0; c < this.width; c++) {
       let start = 0;
       for (let r = 1; r <= this.height; r++) {
-        const same =
-          r < this.height && grid[r][c] === grid[start][c];
+        const same = r < this.height && grid[r][c] === grid[start][c];
         if (!same) {
           addRun(rangeCellsCol(c, start, r - 1));
           start = r;
@@ -195,17 +292,15 @@ export class SlotMachine {
       }
     }
 
-    // Diagonals (top-left → bottom-right)
+    // Diagonals
     if (this.width >= 3 && this.height >= 3) {
       for (let sr = 0; sr < this.height; sr++) {
-        // start each diagonal from left or top border
         payout += scanDiag(grid, sr, 0, +1, +1, this.runtime, pats);
       }
       for (let sc = 1; sc < this.width; sc++) {
         payout += scanDiag(grid, 0, sc, +1, +1, this.runtime, pats);
       }
 
-      // Anti-diagonals (top-right → bottom-left)
       for (let sr = 0; sr < this.height; sr++) {
         payout += scanDiag(grid, sr, this.width - 1, +1, -1, this.runtime, pats);
       }
@@ -219,10 +314,8 @@ export class SlotMachine {
 
   /** One complete spin */
   spin(): SpinResult {
+    this.advanceReels();
     const grid = this.buildGrid();
-
-    // TODO later: apply effects that trigger on_spin (bias, conversions, etc.)
-    // For the slice: evaluate simple lines/diagonals
     const { payout, patterns } = this.evaluate(grid);
 
     return { grid, payout, patterns };
@@ -233,30 +326,18 @@ export class SlotMachine {
    Helpers
    ------------------------------ */
 
-/** lower_bound on cumulative weights */
-function lowerBound(arr: number[], x: number): number {
-  let lo = 0, hi = arr.length - 1, ans = hi;
-  while (lo <= hi) {
-    const mid = (lo + hi) >>> 1;
-    if (arr[mid] >= x) {
-      ans = mid; hi = mid - 1;
-    } else lo = mid + 1;
-  }
-  return ans;
-}
-
 function rangeCellsRow(r: number, c0: number, c1: number) {
   const cells = [];
   for (let c = c0; c <= c1; c++) cells.push({ r, c });
   return cells;
 }
+
 function rangeCellsCol(c: number, r0: number, r1: number) {
   const cells = [];
   for (let r = r0; r <= r1; r++) cells.push({ r, c });
   return cells;
 }
 
-/** Scan a diagonal with direction (dr, dc), collect runs ≥ 3 */
 function scanDiag(
   grid: IconId[][],
   sr: number,

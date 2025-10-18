@@ -91,54 +91,69 @@ export class ReelHandler implements ReelView {
     }
   }
 
-  // Animated spin - returns promise that resolves when animation completes
-  async animate(finalGrid: Grid<IconId>): Promise<void> {
+  // Animated spin with actual reel strips - returns promise that resolves when animation completes
+  async animateWithReels(finalGrid: Grid<IconId>, reelStrips: IconId[][]): Promise<void> {
     this.height = finalGrid.length;
     this.width = this.height ? finalGrid[0].length : 0;
     this.setupCanvas();
 
-    // Initialize reel states for each column
-    this.reelStates = [];
-    const allIconIds = Object.keys(this.icons) as IconId[];
+    // Initialize or update reel states for each column using actual reel strips
+    // If reelStates already exist, preserve their current offset to avoid flicker
+    const existingStates = this.reelStates.length > 0;
+    
+    if (!existingStates) {
+      this.reelStates = [];
+    }
     
     for (let col = 0; col < this.width; col++) {
-      // Generate a strip of random icons
-      const stripLength = 20;
-      const iconStrip: IconId[] = [];
-      for (let i = 0; i < stripLength; i++) {
-        iconStrip.push(allIconIds[Math.floor(Math.random() * allIconIds.length)]);
-      }
+      const strip = reelStrips[col] || [];
       
-      // Final icons for this column (all rows)
-      const finalIcons: IconId[] = [];
-      for (let row = 0; row < this.height; row++) {
-        finalIcons.push(finalGrid[row][col]);
+      if (existingStates && this.reelStates[col]) {
+        // Update existing state, preserve current offset
+        this.reelStates[col].currentIcons = strip;
+        this.reelStates[col].velocity = 0;
+        this.reelStates[col].isSpinning = false;
+        this.reelStates[col].finalIcon = finalGrid[0][col];
+      } else {
+        // Create new state
+        this.reelStates.push({
+          currentIcons: strip,
+          offset: 0,
+          targetOffset: 0,
+          velocity: 0,
+          isSpinning: false,
+          finalIcon: finalGrid[0][col],
+        });
       }
-
-      // Stagger start: each column starts spinning slightly later
-      const delay = col * 100; // 100ms between columns
-      
-      this.reelStates.push({
-        currentIcons: iconStrip,
-        offset: 0,
-        targetOffset: this.cell * stripLength + delay, // different target per column for stagger
-        velocity: 0,
-        isSpinning: false,
-        finalIcon: finalIcons[0], // we'll use first row's icon for simplicity
-      });
     }
 
     return new Promise((resolve) => {
-      // Start animation after a brief delay
-      setTimeout(() => {
-        this.startSpinAnimation(finalGrid, resolve);
-      }, 50);
+      this.startSpinAnimation(finalGrid, resolve);
     });
   }
 
   private startSpinAnimation(finalGrid: Grid<IconId>, onComplete: () => void) {
     const startTime = performance.now();
     const bouncingReels = new Set<number>(); // track which reels are bouncing
+
+    // Timing configuration
+    const RAPID_SPIN_DURATION = 2000; // 2 seconds of rapid spinning
+    const FIRST_REEL_MIN_DELAY = 300; // min additional delay for first reel
+    const FIRST_REEL_MAX_DELAY = 500; // max additional delay for first reel
+    const REEL_STAGGER = 500; // base delay between reels (0.5 seconds)
+    const JITTER_AMOUNT = 100; // random jitter per reel (±50ms)
+    const BOUNCE_DURATION = 150; // 150ms bounce
+
+    // Calculate stop times for each reel
+    const stopTimes: number[] = [];
+    for (let col = 0; col < this.width; col++) {
+      const firstReelDelay = FIRST_REEL_MIN_DELAY + 
+        Math.random() * (FIRST_REEL_MAX_DELAY - FIRST_REEL_MIN_DELAY);
+      const reelOffset = col * REEL_STAGGER;
+      const jitter = (Math.random() - 0.5) * JITTER_AMOUNT;
+      
+      stopTimes.push(RAPID_SPIN_DURATION + firstReelDelay + reelOffset + jitter);
+    }
 
     const animationLoop = (currentTime: number) => {
       const elapsed = currentTime - startTime;
@@ -152,34 +167,22 @@ export class ReelHandler implements ReelView {
       // Update and draw each column
       for (let col = 0; col < this.width; col++) {
         const reel = this.reelStates[col];
-        const delayTime = col * 100;
-        const spinDuration = 1800 + col * 200; // longer spin duration
+        const spinDuration = stopTimes[col];
         const bounceStart = spinDuration;
-        const bounceDuration = 150; // 150ms bounce
 
-        if (elapsed < delayTime) {
-          // Not started yet - draw static
-          for (let row = 0; row < this.height; row++) {
-            const icon = finalGrid[row][col];
-            this.drawIcon(icon, col * this.cell, row * this.cell);
-          }
-          stillSpinning = true;
-          continue;
-        }
-
-        const timeInSpin = elapsed - delayTime;
-
-        if (timeInSpin < spinDuration) {
-          // Still spinning
+        if (elapsed < spinDuration) {
+          // Still spinning rapidly
           reel.isSpinning = true;
-          reel.velocity = this.SPIN_SPEED;
           
-          // Calculate deceleration
-          const timeLeft = spinDuration - timeInSpin;
-          if (timeLeft < 600) {
-            // Decelerate in last 600ms
-            const decelFactor = timeLeft / 600;
+          // Calculate deceleration in the last 400ms before stop
+          const timeUntilStop = spinDuration - elapsed;
+          if (timeUntilStop < 400) {
+            // Decelerate smoothly
+            const decelFactor = timeUntilStop / 400;
             reel.velocity = this.SPIN_SPEED * decelFactor * 0.5 + this.MIN_SPEED;
+          } else {
+            // Full speed
+            reel.velocity = this.SPIN_SPEED;
           }
 
           reel.offset -= reel.velocity; // negative for upward motion
@@ -187,15 +190,15 @@ export class ReelHandler implements ReelView {
           // Draw the scrolling strip for this column
           this.drawReelColumn(col, reel);
           stillSpinning = true;
-        } else if (timeInSpin < bounceStart + bounceDuration) {
+        } else if (elapsed < bounceStart + BOUNCE_DURATION) {
           // Bounce phase
           if (!bouncingReels.has(col)) {
             bouncingReels.add(col);
             reel.offset = 0; // reset offset for bounce calculation
           }
           
-          const bounceTime = timeInSpin - bounceStart;
-          const bounceProgress = bounceTime / bounceDuration;
+          const bounceTime = elapsed - bounceStart;
+          const bounceProgress = bounceTime / BOUNCE_DURATION;
           
           // Ease-out bounce: overshoot then settle
           const bounceOffset = this.BOUNCE_AMOUNT * Math.sin(bounceProgress * Math.PI);
