@@ -87,9 +87,13 @@ export class ReelInspector {
     currentPos?: number
   ): HTMLElement {
     const column = document.createElement('div');
+    column.classList.add('reel-inspector-column');
     column.dataset.stripIndex = String(stripIndex);
     column.dataset.displayIndex = String(displayIndex);
     column.draggable = !this.locked;
+    if (!this.locked) {
+      column.classList.add('draggable');
+    }
     column.addEventListener('dragstart', (ev) => this.handleDragStart(ev, displayIndex));
     column.addEventListener('dragover', (ev) => this.handleDragOver(ev));
     column.addEventListener('drop', (ev) => this.handleDrop(ev, displayIndex));
@@ -100,15 +104,31 @@ export class ReelInspector {
     
     // Header
     const header = document.createElement('div');
-    header.textContent = `Reel ${displayIndex + 1}`;
-    header.style.fontWeight = 'bold';
-    header.style.fontSize = '14px';
-    header.style.marginBottom = '8px';
-    header.style.color = '#fff';
+    header.classList.add('reel-inspector-header');
+
+    const title = document.createElement('span');
+    title.classList.add('reel-inspector-title');
+    title.textContent = `Reel ${displayIndex + 1}`;
+
+    const dragHandle = document.createElement('span');
+    dragHandle.classList.add('drag-handle');
+    dragHandle.textContent = '⋮⋮';
+    dragHandle.draggable = false;
+    dragHandle.setAttribute('aria-hidden', 'true');
+    dragHandle.style.userSelect = 'none';
+    dragHandle.style.cursor = this.locked ? 'default' : 'grab';
+    dragHandle.title = this.locked ? 'Reel order locked' : 'Drag to rearrange';
+
+    header.appendChild(title);
+    header.appendChild(dragHandle);
     column.appendChild(header);
     
     // Reel container with scroll
     const reelContainer = document.createElement('div');
+    reelContainer.classList.add('reel-inspector-body');
+    if (!this.locked) {
+      reelContainer.classList.add('draggable');
+    }
     reelContainer.style.maxHeight = '400px';
     reelContainer.style.overflowY = 'auto';
     reelContainer.style.border = '2px solid #444';
@@ -251,6 +271,7 @@ export class ReelInspector {
 
   setLocked(state: boolean): void {
     this.locked = state;
+    this.dragStartIndex = null;
     this.render(this.lastStrips, this.lastPositions);
   }
   
