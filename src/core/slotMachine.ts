@@ -6,12 +6,12 @@ import {
   MachineConfig,
   MachineRuntime,
   SpinResult,
-  WinPattern,
   RNG,
   ICONS,
   RNGSeed,
 } from "../types/index";
 import { defaultPool as DEFAULT_ICON_POOL } from "../data/defaultPool";
+import { evaluateGrid } from "./winEvaluator";
 
 /* ------------------------------
    Runtime builder (merges config)
@@ -284,74 +284,11 @@ export class SlotMachine {
     return this.getVisibleGrid();
   }
 
-  /** Evaluate simple lines/diagonals: any run of 3+ identical icons */
-  private evaluate(grid: IconId[][]): { payout: number; patterns: WinPattern[] } {
-    const pats: WinPattern[] = [];
-    let payout = 0;
-
-    const addRun = (cells: { r: number; c: number }[]) => {
-      if (cells.length < 3) return;
-      const id = grid[cells[0].r][cells[0].c];
-      const base = this.runtime.icons[id]?.basemult ?? 1;
-      const amount = base * cells.length;
-      payout += amount;
-      pats.push({
-        type: "line",
-        multiplier: amount,
-        cells,
-        icons: cells.map(({ r, c }) => grid[r][c]),
-      });
-    };
-
-    // Rows
-    for (let r = 0; r < this.height; r++) {
-      let start = 0;
-      for (let c = 1; c <= this.width; c++) {
-        const same = c < this.width && grid[r][c] === grid[r][start];
-        if (!same) {
-          addRun(rangeCellsRow(r, start, c - 1));
-          start = c;
-        }
-      }
-    }
-
-    // Columns
-    for (let c = 0; c < this.width; c++) {
-      let start = 0;
-      for (let r = 1; r <= this.height; r++) {
-        const same = r < this.height && grid[r][c] === grid[start][c];
-        if (!same) {
-          addRun(rangeCellsCol(c, start, r - 1));
-          start = r;
-        }
-      }
-    }
-
-    // Diagonals
-    if (this.width >= 3 && this.height >= 3) {
-      for (let sr = 0; sr < this.height; sr++) {
-        payout += scanDiag(grid, sr, 0, +1, +1, this.runtime, pats);
-      }
-      for (let sc = 1; sc < this.width; sc++) {
-        payout += scanDiag(grid, 0, sc, +1, +1, this.runtime, pats);
-      }
-
-      for (let sr = 0; sr < this.height; sr++) {
-        payout += scanDiag(grid, sr, this.width - 1, +1, -1, this.runtime, pats);
-      }
-      for (let sc = this.width - 2; sc >= 0; sc--) {
-        payout += scanDiag(grid, 0, sc, +1, -1, this.runtime, pats);
-      }
-    }
-
-    return { payout, patterns: pats };
-  }
-
   /** One complete spin */
   spin(): SpinResult {
     this.advanceReels();
     const grid = this.buildGrid();
-    const { payout, patterns } = this.evaluate(grid);
+    const { payout, patterns } = evaluateGrid(grid, this.runtime);
 
     return { grid, payout, patterns };
   }
@@ -361,57 +298,3 @@ export class SlotMachine {
    Helpers
    ------------------------------ */
 
-function rangeCellsRow(r: number, c0: number, c1: number) {
-  const cells = [];
-  for (let c = c0; c <= c1; c++) cells.push({ r, c });
-  return cells;
-}
-
-function rangeCellsCol(c: number, r0: number, r1: number) {
-  const cells = [];
-  for (let r = r0; r <= r1; r++) cells.push({ r, c });
-  return cells;
-}
-
-function scanDiag(
-  grid: IconId[][],
-  sr: number,
-  sc: number,
-  dr: 1 | -1,
-  dc: 1 | -1,
-  runtime: MachineRuntime,
-  pats: WinPattern[]
-): number {
-  const h = grid.length;
-  const w = grid[0]?.length ?? 0;
-  let payout = 0;
-
-  const addRun = (cells: { r: number; c: number }[]) => {
-    if (cells.length < 3) return;
-    const id = grid[cells[0].r][cells[0].c];
-    const base = runtime.icons[id]?.basemult ?? 1;
-    const amount = base * cells.length;
-    payout += amount;
-    pats.push({
-      type: "diagonal",
-      multiplier: amount,
-      cells,
-      icons: cells.map(({ r, c }) => grid[r][c]),
-    });
-  };
-
-  let r = sr, c = sc;
-  let run: { r: number; c: number }[] = [];
-  while (r >= 0 && r < h && c >= 0 && c < w) {
-    const id = grid[r][c];
-    if (run.length === 0 || grid[run[run.length - 1].r][run[run.length - 1].c] === id) {
-      run.push({ r, c });
-    } else {
-      addRun(run);
-      run = [{ r, c }];
-    }
-    r += dr; c += dc;
-  }
-  addRun(run);
-  return payout;
-}
