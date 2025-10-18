@@ -104,7 +104,7 @@ export type AspectTag =
 /* ---------- Effects (data-driven) ---------- */
 //  When the effect triggers
 export type EffectHook = 
-  |'on_spin' 
+  | 'on_spin' 
   | 'on_win' 
   | 'on_pattern' 
   | 'on_heat_stage';
