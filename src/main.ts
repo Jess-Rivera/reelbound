@@ -105,12 +105,48 @@ async function bootstrap() {
   
   spinButton.disabled = false;
   
-  print([
-    `Last payout: ${result.payout.toFixed(2)}`,
+  const lines: string[] = [
+    `Payout: ${result.payout.toFixed(2)}`,
     '',
     'Grid:',
     result.grid.map((row: IconId[]) => row.join(' ')).join('\n'),
-  ]);
+  ];
+
+  if (result.patterns && result.patterns.length > 0) {
+    lines.push('', 'Wins:');
+    let runningTotal = 0;
+    for (const pattern of result.patterns) {
+      const firstCell = pattern.cells[0];
+      const sameRow = pattern.cells.every(({ r }) => r === firstCell.r);
+      const sameCol = pattern.cells.every(({ c }) => c === firstCell.c);
+      const orientation =
+        pattern.type === 'diagonal'
+          ? 'Diagonal'
+          : sameRow
+            ? 'Horizontal'
+            : sameCol
+              ? 'Vertical'
+              : 'Line';
+      const length = pattern.cells.length;
+      const icon = pattern.icons[0];
+      const iconInfo = runtime.icons[icon];
+      const iconName = iconMeta[icon]?.id ?? icon;
+      const baseMult = iconInfo?.basemult ?? 1;
+      runningTotal += pattern.multiplier;
+      lines.push(
+        `${orientation} ${length}x ${iconName}: ${baseMult} x ${length} = ${pattern.multiplier.toFixed(
+          2
+        )}`
+      );
+    }
+    if (Math.abs(runningTotal - result.payout) > 1e-6) {
+      lines.push('', `Payout mismatch: breakdown total ${runningTotal.toFixed(2)} vs result ${result.payout.toFixed(2)}`);
+    }
+  } else {
+    lines.push('', 'Wins: none');
+  }
+
+  print(lines);
 });
 }
 
