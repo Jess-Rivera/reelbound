@@ -1,17 +1,17 @@
-
 # Git Workflow — Solo Developer (Rebase-Centric)
 
-This workflow keeps your Git history **clean, linear, and easy to read**.  
-It’s optimized for solo development (no pull requests, no shared dev branch).  
+This workflow keeps your Git history **clean, linear, and easy to read**.
+It’s optimized for solo development (no pull requests, no shared dev branch).
 You’ll work from short-lived feature branches, rebase them regularly, and merge them fast-forward into `main`.
 
 ---
 
 ## 🧭 0. One-Time Setup
+
 ```bash
 git config pull.ff only                 # disallow accidental merge commits on pull
 git config push.autoSetupRemote true    # automatically set remote tracking on first push
-````
+```
 
 ---
 
@@ -216,6 +216,44 @@ You want to delete an unfinished or abandoned feature branch safely.
 
 ---
 
+### D) Experimental Branch Workflow (Risky Systems or Refactors)
+
+Use this when you’re making major changes that might break your current feature branch but still want to experiment safely.
+
+```bash
+# 1. Commit & push your current feature branch
+git add -A
+git commit -m "checkpoint: stable before experiment"
+git push
+
+# 2. Create an experimental sub-branch from your current feature
+git switch -c exp/<short_description>
+git push -u origin HEAD    # optional backup on remote
+
+# 3. Work normally on the experimental branch
+git add -A
+git commit -m "WIP: experiment with new system"
+git push
+
+# 4. Merge experiment back into feature branch when stable
+git switch feat/<feature_branch>
+git pull --ff-only origin feat/<feature_branch>
+git merge --ff-only exp/<short_description>
+git push origin feat/<feature_branch>
+
+# 5. Clean up
+git branch -d exp/<short_description>
+git push origin --delete exp/<short_description>
+```
+
+**Use this when:**
+
+* You want to test a large or risky refactor safely.
+* You’re experimenting on a core system (e.g., combat, round flow, heat, reel logic).
+* You might need to discard the experiment entirely if it fails.
+
+---
+
 ## 🧩 Commands-Only Reference
 
 ```bash
@@ -284,4 +322,3 @@ git push origin --tags
 **Author:** Jess Rivera
 **Last updated:** October 2025
 **Purpose:** Canonical workflow for Classic Cassie development
-

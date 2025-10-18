@@ -62,6 +62,7 @@ async function bootstrap() {
   slotMachine.beginRound();
   let currentOrder: number[] = [];
   let orderLocked = false;
+  let lockButton: HTMLButtonElement | null = null;
 
   const reel = new ReelHandler('#reels');
   await reel.loadIcons(iconMeta);
@@ -123,6 +124,10 @@ async function bootstrap() {
         orderLocked = false;
         inspector.setLocked(false);
         inspector.resetOrder();
+        if (lockButton) {
+          lockButton.disabled = false;
+          lockButton.textContent = 'Lock Order';
+        }
         updateInspector();
         reel.render(slotMachine.getVisibleGrid());
         print(['Reels regenerated!', '', ...getReelComposition()]);
@@ -149,18 +154,28 @@ async function bootstrap() {
     });
   }
 
-  // lockButton 
-  const lockButton = document.querySelector<HTMLButtonElement>('#lock-order');
-  if (lockButton) {
-    lockButton.addEventListener('click', () => {
-      if (orderLocked) return;
-      slotMachine.lockReelOrder();
-      inspector.setLocked(true);
-      orderLocked = true;
+  lockButton = document.querySelector<HTMLButtonElement>('#lock-order');
+
+  const lockReelsForRound = (source: 'button' | 'spin') => {
+    if (orderLocked) return;
+    slotMachine.lockReelOrder();
+    inspector.setLocked(true);
+    orderLocked = true;
+    if (lockButton) {
       lockButton.disabled = true;
       lockButton.textContent = 'Order Locked';
+    }
+    if (source === 'button') {
       print(['Reel order locked for this round.']);
-    });
+    } else {
+      console.log('[Slotspire] Reel order locked automatically on first spin.');
+    }
+  };
+
+  if (lockButton) {
+    lockButton.disabled = false;
+    lockButton.textContent = 'Lock Order';
+    lockButton.addEventListener('click', () => lockReelsForRound('button'));
   }
 
 
@@ -188,6 +203,7 @@ async function bootstrap() {
   ]);
 
   spinButton.addEventListener('click', async () => {
+    lockReelsForRound('spin');
     spinButton.disabled = true;
     
     const result = slotMachine.spin();
