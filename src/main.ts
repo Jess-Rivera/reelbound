@@ -59,18 +59,33 @@ async function bootstrap() {
   const rng = new SimpleRNG(seedParam ?? undefined);
 
   const slotMachine = new SlotMachine(runtime, rng);
+  slotMachine.beginRound();
+  let currentOrder: number[] = [];
+  let orderLocked = false;
 
   const reel = new ReelHandler('#reels');
   await reel.loadIcons(iconMeta);
   
   // Initialize Reel Inspector
-  const inspector = new ReelInspector('#reel-inspector-content');
+  const inspector = new ReelInspector('#reel-inspector-content', {
+    onOrderChange: (order) => {
+      if (orderLocked) return;
+      currentOrder = [...order];
+      slotMachine.reorderReels(order);
+      reel.render(slotMachine.getVisibleGrid());
+      inspector.resetOrder();
+      updateInspector();
+    },
+  });
   await inspector.loadIcons(iconMeta);
   
   // Function to update inspector display
   const updateInspector = () => {
     const reelStrips = slotMachine.getAllReelStrips();
     const positions = slotMachine.getReelPositions();
+    if (currentOrder.length === 0) {
+      currentOrder = reelStrips.map((_, idx) => idx);
+    }
     inspector.render(reelStrips, positions);
   };
   
@@ -103,6 +118,11 @@ async function bootstrap() {
       setSeed: (seed: RNGSeed) => rng.setSeed(seed),
       regenerateReels: () => {
         slotMachine.regenerateReels();
+        slotMachine.beginRound();          // clear any previous lock state
+        currentOrder = [];
+        orderLocked = false;
+        inspector.setLocked(false);
+        inspector.resetOrder();
         updateInspector();
         reel.render(slotMachine.getVisibleGrid());
         print(['Reels regenerated!', '', ...getReelComposition()]);
@@ -128,6 +148,21 @@ async function bootstrap() {
       toggleButton.textContent = inspectorVisible ? 'Hide Inspector' : 'Show Inspector';
     });
   }
+
+  // lockButton 
+  const lockButton = document.querySelector<HTMLButtonElement>('#lock-order');
+  if (lockButton) {
+    lockButton.addEventListener('click', () => {
+      if (orderLocked) return;
+      slotMachine.lockReelOrder();
+      inspector.setLocked(true);
+      orderLocked = true;
+      lockButton.disabled = true;
+      lockButton.textContent = 'Order Locked';
+      print(['Reel order locked for this round.']);
+    });
+  }
+
 
   const spinButton = document.querySelector<HTMLButtonElement>('#spin');
   if (!spinButton) {

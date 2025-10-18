@@ -9,14 +9,25 @@ export class ReelInspector {
   private container: HTMLElement;
   private icons: Record<IconId, HTMLImageElement> = {} as any;
   private readonly cellSize = 48; // Smaller cells for preview
+  private locked = false;
+  private order: number[] = [];
+  private lastStrips: IconId[][] = [];
+  private lastPositions?: number[];
+  private dragStartIndex: number | null = null;
+  private readonly onOrderChange?: (order: number[]) => void;
   
-  constructor(containerSelector: string) {
+  constructor(
+    containerSelector: string,
+    opts: { onOrderChange?: (order: number[]) => void } = {}
+  ) {
     const el = document.querySelector(containerSelector);
     if (!(el instanceof HTMLElement)) {
       throw new Error(`ReelInspector: Container not found: ${containerSelector}`);
     }
     this.container = el;
+    this.onOrderChange = opts.onOrderChange;
   }
+
 
   async loadIcons(meta: IconMetaTable): Promise<void> {
     const tasks = Object.entries(meta).flatMap(([id, info]) => {
@@ -46,6 +57,12 @@ export class ReelInspector {
    * @param currentPositions - Optional array showing current position in each reel
    */
   render(reelStrips: IconId[][], currentPositions?: number[]): void {
+    this.lastStrips = reelStrips;
+    this.lastPositions = currentPositions;
+    if (this.order.length !== reelStrips.length) {
+      this.order = reelStrips.map((_,idx) => idx);
+    }
+    
     this.container.innerHTML = '';
     
     const wrapper = document.createElement('div');
@@ -54,16 +71,28 @@ export class ReelInspector {
     wrapper.style.padding = '16px';
     wrapper.style.overflowX = 'auto';
     
-    reelStrips.forEach((strip, colIndex) => {
-      const reelColumn = this.createReelColumn(strip, colIndex, currentPositions?.[colIndex]);
+    this.order.forEach((stripIndex, displayIndex) => {
+      const strip = reelStrips[stripIndex];
+      const reelColumn = this.createReelColumn(strip, stripIndex, displayIndex, currentPositions?.[stripIndex]);
       wrapper.appendChild(reelColumn);
     });
     
     this.container.appendChild(wrapper);
   }
 
-  private createReelColumn(strip: IconId[], colIndex: number, currentPos?: number): HTMLElement {
+  private createReelColumn(
+    strip: IconId[], 
+    stripIndex: number,
+    displayIndex: number, 
+    currentPos?: number
+  ): HTMLElement {
     const column = document.createElement('div');
+    column.dataset.stripIndex = String(stripIndex);
+    column.dataset.displayIndex = String(displayIndex);
+    column.draggable = !this.locked;
+    column.addEventListener('dragstart', (ev) => this.handleDragStart(ev, displayIndex));
+    column.addEventListener('dragover', (ev) => this.handleDragOver(ev));
+    column.addEventListener('drop', (ev) => this.handleDrop(ev, displayIndex));
     column.style.display = 'flex';
     column.style.flexDirection = 'column';
     column.style.alignItems = 'center';
@@ -71,7 +100,7 @@ export class ReelInspector {
     
     // Header
     const header = document.createElement('div');
-    header.textContent = `Reel ${colIndex + 1}`;
+    header.textContent = `Reel ${displayIndex + 1}`;
     header.style.fontWeight = 'bold';
     header.style.fontSize = '14px';
     header.style.marginBottom = '8px';
@@ -155,6 +184,49 @@ export class ReelInspector {
     return column;
   }
 
+  private handleDragStart(ev: DragEvent, displayIndex: number) {
+    if (this.locked) {
+      ev.preventDefault();
+      return;
+    }
+    this.dragStartIndex = displayIndex;
+    ev.dataTransfer?.setData('text/plain', displayIndex.toString());
+    if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+  }
+
+  private handleDragOver (ev: DragEvent) {
+    if (!this.locked) {
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  private handleDrop (ev: DragEvent, targetIndex: number) {
+    if (this.locked) return;
+    ev.preventDefault();
+
+    const srcText = ev.dataTransfer?.getData('text/plain');
+    let sourceIndex = this.dragStartIndex;
+    if (sourceIndex == null && srcText != null) {
+      sourceIndex = Number(srcText);
+    }
+    this.dragStartIndex = null;
+
+    if (sourceIndex == null || Number.isNaN(sourceIndex)) return;
+    if (sourceIndex === targetIndex) return;
+
+    const newOrder = [...this.order];
+    const [moved] = newOrder.splice(sourceIndex, 1);
+    newOrder.splice(targetIndex, 0, moved);
+
+    this.order = newOrder;
+    this.onOrderChange?.([...this.order]);
+
+    if(this.lastStrips.length) {
+      this.render(this.lastStrips, this.lastPositions);
+    }
+  }
+
   private calculateStats(strip: IconId[]): string {
     const counts: Record<string, number> = {};
     strip.forEach(icon => {
@@ -176,4 +248,14 @@ export class ReelInspector {
     // For now, we'd need to store the strips and re-render
     // In a production app, you'd cache the DOM elements and just update classes
   }
+
+  setLocked(state: boolean): void {
+    this.locked = state;
+    this.render(this.lastStrips, this.lastPositions);
+  }
+  
+  resetOrder(): void {
+    this.order = this.lastStrips.map((_, idx) => idx);
+  }
+
 }
