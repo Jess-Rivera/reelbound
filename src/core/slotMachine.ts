@@ -230,6 +230,41 @@ export class SlotMachine {
     }
     this.initializeReels();
   }
+  /** Reordering Functions **/
+  
+  private reelOrderLocked = false;
+
+  beginRound(): void {
+    this.reelOrderLocked = false;
+  }
+
+  reorderReels(order: number[]): void {
+    if (this.reelOrderLocked) return;
+    if (order.length != this.reelStrips.length) return;
+
+    const seen = new Set<number>();
+    for (const idx of order) {
+      if (idx < 0 || idx >= this.reelStrips.length || seen.has(idx)) return;
+      seen.add(idx);
+    }
+
+    const newStrips: IconId[][] = [];
+    const newPositions: number[] = [];
+
+    for (let slot = 0; slot < order.length; slot++){
+      const source = order[slot];
+      newStrips.push(this.reelStrips[source]);
+      newPositions.push(this.reelPositions[source]);
+    }
+
+    this.reelStrips = newStrips;
+    this.reelPositions = newPositions;
+  }
+
+  lockReelOrder(): void {
+    this.reelOrderLocked = true;
+  }
+  
 
   /** Advance reels by random amounts */
   private advanceReels(): void {

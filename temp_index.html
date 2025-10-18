@@ -83,13 +83,6 @@
         border: 1px solid rgba(255, 255, 255, 0.08);
       }
 
-      .controls {
-        display: flex;
-        gap: 12px;
-        justify-content: flex-end;
-        flex-wrap: wrap;
-      }
-
       button {
         padding: 12px 18px;
         border-radius: 999px;
@@ -117,17 +110,6 @@
         opacity: 0.5;
         cursor: not-allowed;
         transform: none;
-      }
-
-      .secondary-button {
-        background: rgba(65, 102, 245, 0.18);
-        color: #8da2cb;
-        border: 1px solid rgba(125, 148, 233, 0.45);
-      }
-
-      .secondary-button:hover {
-        background: rgba(65, 102, 245, 0.28);
-        color: #fff;
       }
 
       #debug {
@@ -185,15 +167,12 @@
     <main>
       <header>
         <h1>Slotspire</h1>
-        <span id="machine-name">Loading...</span>
+        <span id="machine-name">Loading…</span>
       </header>
 
       <section class="card" id="reel-card">
         <canvas id="reels"></canvas>
-        <div class="controls">
-          <button id="spin">Spin</button>
-          <button id="lock-order" class="secondary-button">Lock Order</button>
-        </div>
+        <button id="spin">Spin</button>
       </section>
 
       <aside class="card" id="info-card">

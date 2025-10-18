@@ -17,7 +17,10 @@ import { HeatSystem } from "../systems/heatSystem";
  * Minimal contract the slot machine must follow so the round manager can ask for spins.
  */
 export interface SlotMachinePort {
-    spin(seed?: number): SpinResult;
+    beginRound(): void;
+    reorderReels(order: number[]): void;
+    lockReelOrder(): void;
+    spin(): SpinResult;
 }
 
 /**
@@ -57,6 +60,7 @@ export function createRoundManager(machine: SlotMachinePort, heat: HeatSystem): 
             st = initial;
             log = [];
             winStreak = 0;
+            machine.beginRound();
             log.push(`Round started with ${st.spinsRemaining} spins, ${st.creditsThisRound} credits, and heat level ${st.heat}.`);
         },
         /**
