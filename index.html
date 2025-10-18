@@ -85,11 +85,16 @@
 
       .controls {
         display: flex;
-        gap: 12px;
-        justify-content: flex-end;
         flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        justify-content: space-between;
       }
-
+      .mode-controls,
+      .spin-controls {
+        display: flex;
+        gap: 12px;
+      }
       button {
         padding: 12px 18px;
         border-radius: 999px;
@@ -259,6 +264,16 @@
       <section class="card" id="reel-card">
         <canvas id="reels"></canvas>
         <div class="controls">
+          <div class="controls">
+            <div class="mode-controls">
+              <button id="choose-safe" class="secondary-button">Safe Mode</button>
+              <button id="choose-risky" class="secondary-button">Risky Mode</button>
+            </div>
+            <div class="spin-controls">
+              <button id="lock-order" class="secondary-button">Lock Order</button>
+              <button id="spin">Spin</button>
+            </div>
+          </div>
           <button id="spin">Spin</button>
           <button id="lock-order" class="secondary-button">Lock Order</button>
         </div>

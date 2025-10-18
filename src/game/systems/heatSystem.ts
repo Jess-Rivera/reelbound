@@ -40,7 +40,7 @@ export function createHeatSystem(thresholds = {WARMED_UP: 0, ON_FIRE: 33, CORRUP
          * Raises heat according to the spin result: wins apply a stronger bump and streaks add minor bonuses.
          */
         onSpin(h, spin, streak) {
-            const k = spin.totalPayout > 0 ? 7 : 1;
+            const k = spin.payout > 0 ? 7 : 1;
             const streakBonus = Math.min(0, streak -1 );
             return Math.max(0, h + k + streakBonus);
         },

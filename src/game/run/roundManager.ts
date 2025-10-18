@@ -9,6 +9,7 @@ import {
     RoundConfig,
     RoundState,
     RoundOutcome,
+    RoundMode,
     SpinResult
 } from "../types";
 import { HeatSystem } from "../systems/heatSystem";
@@ -49,6 +50,7 @@ export function createRoundManager(machine: SlotMachinePort, heat: HeatSystem): 
     let st: RoundState;
     let log: string[] = [];
     let winStreak = 0;
+    let startingSpins = 0;
 
     return {
         /**
@@ -60,8 +62,9 @@ export function createRoundManager(machine: SlotMachinePort, heat: HeatSystem): 
             st = initial;
             log = [];
             winStreak = 0;
+            startingSpins = initial.spinsRemaining;
             machine.beginRound();
-            log.push(`Round started with ${st.spinsRemaining} spins, ${st.creditsThisRound} credits, and heat level ${st.heat}.`);
+            log.push(`Round started in ${st.mode} with ${st.spinsRemaining} spins, ×${st.multiplier.toFixed(1)} multiplier) with ${st.creditsThisRound} credits and heat ${st.heat}.`);
         },
         /**
          * Answers whether we still have spins left to spend this round.
@@ -77,16 +80,20 @@ export function createRoundManager(machine: SlotMachinePort, heat: HeatSystem): 
             if (!this.canSpin()) throw new Error("No spins remaining");
             const spinResult = machine.spin();
             st.spinsRemaining -= 1;
-            st.creditsThisRound += (spinResult.totalPayout ?? 0);
             
-            if (spinResult.totalPayout > 0) winStreak++; else winStreak = 0;
-            st.heat = heat.onSpin(st.heat, spinResult, winStreak);
+            const rawPayout = spinResult.payout ?? 0;
+            const scaledPayout = rawPayout * st.multiplier;
+            st.creditsThisRound += scaledPayout;
 
+            if (rawPayout > 0) winStreak++; else winStreak = 0;
+            st.heat = heat.onSpin(st.heat, spinResult, winStreak);
+            
             log.push(
-                `Spin: payout=${spinResult.totalPayout} streak=${winStreak} heat=${st.heat} tier=${heat.getHeatTier(st.heat)}`
-            ); 
-            return {spin: spinResult, state: {...st}};  
+                `Spin: raw=${rawPayout.toFixed(2)} scaled=${scaledPayout.toFixed(2)} multiplier=×${st.multiplier.toFixed(1)} streak=${winStreak} heat=${st.heat} tier=${heat.getHeatTier(st.heat)}`
+            );
+            return { spin: spinResult, state: { ...st } };
         },
+
         /**
          * Closes the round, evaluates whether we met the credit goal, and bundles all
          * the stats plus the log so the caller can summarize the encounter.
@@ -96,11 +103,16 @@ export function createRoundManager(machine: SlotMachinePort, heat: HeatSystem): 
             ? true
             : st.creditsThisRound >= cfg.targetCredits;
 
+            const spinsUsed = startingSpins - st.spinsRemaining;
+
             return {
                 success,
                 creditsGained: st.creditsThisRound,
                 heatEnd: st.heat,
                 damageTaken: success ? 0 : Math.max(0, (cfg.targetCredits ?? 0) - st.creditsThisRound),
+                multiplier: st.multiplier,
+                mode: st.mode,
+                spinsUsed,
                 log,
             };
         }   

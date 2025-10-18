@@ -4,6 +4,12 @@ import { ReelInspector } from './ui/reelInspector';
 import { iconMeta } from './data/iconMetaTable';
 import machineConfigData from './data/machines/selectableMachines.json';
 import { isMachineConfig, MachineConfig, RNG, RNGSeed, ICONS, IconId } from './types/index';
+import { createRoundManager } from './game/run/roundManager';
+import { createHeatSystem } from './game/systems/heatSystem';
+import { ROUND_MODE_PRESETS, RoundModePreset } from './game/types';
+
+
+
 
 class SimpleRNG implements RNG {
   private state: number;
@@ -59,10 +65,22 @@ async function bootstrap() {
   const rng = new SimpleRNG(seedParam ?? undefined);
 
   const slotMachine = new SlotMachine(runtime, rng);
+  const heatSystem = createHeatSystem();
   slotMachine.beginRound();
   let currentOrder: number[] = [];
   let orderLocked = false;
   let lockButton: HTMLButtonElement | null = null;
+  let spinButtonEl: HTMLButtonElement;
+
+  const DEMO_TOTAL_ROUNDS = 3;
+  const DEMO_TARGET_CREDITS = 10;
+  const fightState ={
+    currentRound: 0,
+    totalCredits: 0,
+    heat: 0,
+    modeChoice: null as RoundModePreset | null,
+  };
+  const roundManager = createRoundManager(slotMachine, heatSystem);
 
   const reel = new ReelHandler('#reels');
   await reel.loadIcons(iconMeta);
@@ -105,7 +123,104 @@ async function bootstrap() {
       return `Reel ${idx + 1}: ${summary}`;
     });
   };
+
+const spinButton = document.querySelector<HTMLButtonElement>('#spin');
+  if (!spinButton) {
+    print(['Spin button not found; aborting.']);
+    return;
+  }
+spinButtonEl = spinButton;
+
+  const modeButtons = {
+    safe: document.querySelector<HTMLButtonElement>('#choose-safe'),
+    risky: document.querySelector<HTMLButtonElement>('#choose-risky'),
+  };
+
+  function showRoundChoice() {
+    if (modeButtons.safe) modeButtons.safe.disabled = false;
+    if (modeButtons.risky) modeButtons.risky.disabled = false;
+  }
+
+  function hideRoundChoice() {
+    if (modeButtons.safe) modeButtons.safe.disabled = true;
+    if (modeButtons.risky) modeButtons.risky.disabled = true;
+  }
+
+  function onModeChosen(preset: RoundModePreset) {
+    fightState.modeChoice = preset;
+    hideRoundChoice();
+    startRound();
+  }
+
+  modeButtons.safe?.addEventListener('click', () => onModeChosen(ROUND_MODE_PRESETS.safe));
+  modeButtons.risky?.addEventListener('click', () => onModeChosen(ROUND_MODE_PRESETS.risky));
   
+  function startRound() {
+    const preset = fightState.modeChoice;
+    if (!preset) return;
+
+    fightState.currentRound += 1;
+
+    roundManager.start(
+      {
+        spinsAllowed: preset.spinsAllowed,
+        betCost: 0,
+        targetCredits: undefined,
+      },
+      {
+        spinsRemaining: preset.spinsAllowed,
+        creditsThisRound: 0,
+        heat: fightState.heat,
+        multiplier: preset.multiplier,
+        mode: preset.mode,
+      }
+    );
+
+    fightState.modeChoice = null;
+    spinButtonEl.disabled = false;
+    print([
+      `Round ${fightState.currentRound}/${DEMO_TOTAL_ROUNDS} started (${preset.label}).`,
+      `Spins remaining: ${preset.spinsAllowed}`,
+    ]);
+  }
+
+  function finishCurrentRound() {
+    const outcome = roundManager.finish();
+    fightState.totalCredits += outcome.creditsGained;
+    fightState.heat = outcome.heatEnd;
+
+    print([
+      `Round ${fightState.currentRound} (${outcome.mode}) complete.`,
+      `Credits gained: ${outcome.creditsGained.toFixed(2)} (multiplier x${outcome.multiplier.toFixed(1)})})`,
+      `Spins used: ${outcome.spinsUsed} / ${ROUND_MODE_PRESETS[outcome.mode].spinsAllowed}`,
+      `Heat now: ${outcome.heatEnd}`,
+      '',
+      ...outcome.log,
+    ]);
+
+    if (fightState.currentRound >= DEMO_TOTAL_ROUNDS) {
+      concludeFight();
+    } else {
+      showRoundChoice();
+    }
+  }
+
+  function concludeFight() {
+    const success = fightState.totalCredits >= DEMO_TARGET_CREDITS;
+
+    print([
+      `Fight finished with ${fightState.totalCredits.toFixed(2)} credits (target ${DEMO_TARGET_CREDITS}).`,
+      success ? 'Victory!' : 'Defeat.',
+      '',
+      'Select a mode to start a new fight.',
+    ]);
+
+    fightState.currentRound = 0;
+    fightState.totalCredits = 0;
+    showRoundChoice();
+  }
+
+
   // Expose debug interface (all at once)
   if (typeof window !== 'undefined') {
     const globalWithDebug = window as typeof window & {
@@ -179,11 +294,7 @@ async function bootstrap() {
   }
 
 
-  const spinButton = document.querySelector<HTMLButtonElement>('#spin');
-  if (!spinButton) {
-    print(['Spin button not found; aborting.']);
-    return;
-  }
+  
 
   if (machineLabel) {
     machineLabel.textContent = runtime.name;
@@ -202,34 +313,39 @@ async function bootstrap() {
     'Press SPIN to start.',
   ]);
 
-  spinButton.addEventListener('click', async () => {
+  spinButtonEl.addEventListener('click', async () => {
+    if (!roundManager.canSpin()) return;
+
     lockReelsForRound('spin');
-    spinButton.disabled = true;
+    spinButtonEl.disabled = true;
     
-    const result = slotMachine.spin();
+    const { spin, state } = roundManager.spin(); 
     
     // Get reel strips for animation
     const reelStrips = slotMachine.getAllReelStrips();
     
     // Animate with actual reel strips
-    await reel.animateWithReels(result.grid, reelStrips);
+    await reel.animateWithReels(spin.grid, reelStrips);
     
     // Update inspector to show new positions
     updateInspector();
+    spinButtonEl.disabled = !roundManager.canSpin();
     
-    spinButton.disabled = false;
-    
+    if (!roundManager.canSpin()) {
+      finishCurrentRound();
+    }
+
     const lines: string[] = [
-      `Payout: ${result.payout.toFixed(2)}`,
+      `Payout: ${spin.payout.toFixed(2)}`,
       '',
       'Grid:',
-      result.grid.map((row: IconId[]) => row.join(' ')).join('\n'),
+      spin.grid.map((row: IconId[]) => row.join(' ')).join('\n'),
     ];
-
-    if (result.patterns && result.patterns.length > 0) {
+    //TODO This is a repeat of my winConditions.ts?
+    if (spin.patterns && spin.patterns.length > 0) {
       lines.push('', 'Wins:');
       let runningTotal = 0;
-      for (const pattern of result.patterns) {
+      for (const pattern of spin.patterns) {
         const firstCell = pattern.cells[0];
         const sameRow = pattern.cells.every(({ r }) => r === firstCell.r);
         const sameCol = pattern.cells.every(({ c }) => c === firstCell.c);
@@ -253,8 +369,8 @@ async function bootstrap() {
           )}`
         );
       }
-      if (Math.abs(runningTotal - result.payout) > 1e-6) {
-        lines.push('', `Payout mismatch: breakdown total ${runningTotal.toFixed(2)} vs result ${result.payout.toFixed(2)}`);
+      if (Math.abs(runningTotal - spin.payout) > 1e-6) {
+        lines.push('', `Payout mismatch: breakdown total ${runningTotal.toFixed(2)} vs result ${spin.payout.toFixed(2)}`);
       }
     } else {
       lines.push('', 'Wins: none');
@@ -262,6 +378,8 @@ async function bootstrap() {
 
     print(lines);
   });
+
+  showRoundChoice();
 }
 
 bootstrap().catch((err) => {
