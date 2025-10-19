@@ -495,6 +495,29 @@ export interface PlayerProfile {
   lastRunAt?: number | null;
 }
 
+/* ---------- Manual Spin Contracts ---------- */
+
+export interface ManualSpinSession {
+ reels: ManualReelState[];
+ status: `idle` | `spinning` | `stopping` | `complete` | `timed_out`;
+ activeReelIndex: number;
+ startAt: number;
+ deadline: number;
+ spinResult?: SpinResult;
+}
+
+export interface ManualReelState {
+  strip: IconId[];
+  position: number;
+  offsetPx: number;
+  velocity: number;
+  isStopped: boolean;
+  finalIndex?: number;
+  finalIcon?: IconId;
+  previewIcon?: IconId;
+  spinStartTime?: number;
+  stopRequestedAt?: number;
+}
 
 /* ---------- Spin result & patterns ---------- */
 export type PatternType = 'line' | 'diagonal' | 'corner' | 'angle' | 'triangle' | 'square' | 'plus' | 'fullhouse';  // etc.

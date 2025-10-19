@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Slotspire Prototype</title>
+    <title>Reelbound Prototype</title>
     <style>
       :root {
         color-scheme: dark;
@@ -124,15 +124,51 @@
         transform: none;
       }
 
-      .secondary-button {
-        background: linear-gradient(120deg, #4166f5, #7b3ef7);
+      @keyframes pulse-red {
+          0% {
+              transform: scale(0.95);
+              box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.7);
+          }
+
+          70% {
+              transform: scale(1);
+              box-shadow: 0 0 0 10px rgba(255, 82, 82, 0);
+          }
+
+          100% {
+              transform: scale(0.95);
+              box-shadow: 0 0 0 0 rgba(255, 82, 82, 0);
+          }
+      }
+      .safe-button {
+        background: linear-gradient(120deg, #266620, #014907);
         color: #fff;
-        border: 1px solid rgba(125, 148, 233, 0.45);
+        border: 1px solid rgba(85, 197, 100, 0.45);
       }
 
-      .secondary-button:hover {
+      .safe-button:hover {
         transform: translateY(-1px);
-        box-shadow: 0 8px 20px rgba(66, 104, 244, 0.35);
+        box-shadow: 0 8px 20px rgba(66, 244, 75, 0.35);
+      }
+      .risky-button {
+        background: linear-gradient(120deg, #8b2424, #aa2b8f);
+        color: #fff;
+        border: 1px solid rgba(233, 125, 152, 0.45);
+      }
+      .risky-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(244, 66, 66, 0.35);
+      }
+      .lock-button {
+        background: linear-gradient(120deg, #491114, #491138);
+        color: #fff;
+        border: 1px solid rgba(233, 125, 148, 0.45);
+        /* animation: pulse-red 2s infinite; */
+      }
+
+      .lock-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(255, 45, 45, 0.35);
       }
 
       .reel-inspector-column {
@@ -256,29 +292,31 @@
   <body>
     <main>
       <header>
-        <h1>Slotspire</h1>
+        <h1>Reelbound</h1>
         <span id="machine-name">Loading...</span>
       </header>
 
       <section class="card" id="reel-card">
         <canvas id="reels"></canvas>
-        <div class="controls">
-          <div class="controls">
-            <div class="mode-controls">
-              <button id="choose-safe" class="secondary-button">Safe Mode</button>
-              <button id="choose-risky" class="secondary-button">Risky Mode</button>
-            </div>
-            <div class="spin-controls">
-              <button id="lock-order" class="secondary-button">Lock Order</button>
-              <button id="spin">Spin</button>
-            </div>
-          </div>
-        </div>
       </section>
 
       <aside class="card" id="info-card">
         <h2>Debug</h2>
         <pre id="debug">(waiting for first spin)</pre>
+      </aside>
+      <aside class="card" id="controls">
+        <h2>Controls</h2>
+          <div class="controls">
+            <div class="mode-controls">
+              <button id="choose-safe" class="safe-button">Safe Mode</button>
+              <button id="choose-risky" class="risky-button">Risky Mode</button>
+            </div>
+            <div class="spin-controls">
+              <button id="lock-order" class="lock-button">Lock Order</button>
+              <button id="spin">Spin</button>
+              <button id="stop" class="lock-button">Stop</button>
+            </div>
+          </div>
       </aside>
 
       <section class="card" id="reel-inspector">
@@ -290,7 +328,14 @@
         </div>
         <div id="reel-inspector-content"></div>
       </section>
+
+
+
+
+
+
     </main>
+
 
     <script type="module" src="/src/main.ts"></script>
   </body>
