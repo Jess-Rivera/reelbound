@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ASCII Slots Demo</title>
+  <style>
+    :root {
+      --bg: #0e0f13;
+      --panel: #151722;
+      --accent: #ffd166;
+      --accent2: #ff4d6d;
+      --ok: #06d6a0;
+      --base: #c6d0f5;
+      --dim: #8da2cb;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: radial-gradient(1000px 600px at 50% 50%, #151722 0%, #0e0f13 60%, #0b0c10 100%);
+      color: var(--base);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Cascadia Mono", "Courier New", monospace;
+      letter-spacing: 0.5px;
+      user-select: none;
+    }
+    .wrap {
+      display: grid;
+      place-items: center;
+      height: 100%;
+      gap: 10px;
+      padding: 20px;
+    }
+    #c {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border-radius: 14px;
+      box-shadow: 0 0 0 2px #222842, 0 0 60px rgba(255,77,109,0.25), inset 0 0 100px rgba(0,0,0,0.4);
+      background: #0e0f13;
+    }
+    .hud {
+      font-size: 14px;
+      opacity: 0.9;
+      text-align: center;
+    }
+    .hud .hi { color: var(--accent2); }
+    .hud .lo { color: var(--ok); }
+    .hint {
+      font-size: 12px;
+      opacity: 0.65;
+      text-align: center;
+    }
+    button {
+      padding: 8px 14px;
+      background: #1d2030;
+      color: var(--base);
+      border: 1px solid #343a5a;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #232741;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="c" width="1920" height="1080"></canvas>
+    <div class="hud">
+      <span>ASCII Slots demo — <span class="hi">colored glyphs</span>, trail blur, win pulse, heat tint.</span>
+      &nbsp;Press <b>Space</b> or click <b>Spin</b>.
+      <button id="spinBtn">Spin</button>
+    </div>
+    <div class="hint">If text looks blurry, your browser is scaling. Try Ctrl+0 zoom for 1:1 pixels.</div>
+  </div>
+<script>
+(() => {
+  // --- Config ---
+  const W = 1920, H = 1080;
+  const cols = 80, rows = 27;           // grid size
+  const cellW = Math.floor(W / cols);   // integer sizing to avoid blur
+  const cellH = Math.floor(H / rows);
+  const fontSize = Math.floor(cellH * 0.9);
+  const font = `${fontSize}px monospace`;
+
+  // Slot layout (5 reels x 3 rows visible), centered
+  const reelCount = 5, visibleRows = 3;
+  const reelCols = 3; // width of a reel in characters
+  const gapCols = 2;  // gap between reels
+  const totalColsNeeded = reelCount * reelCols + (reelCount - 1) * gapCols;
+  const startCol = Math.floor((cols - totalColsNeeded) / 2);
+  const startRow = Math.floor((rows - visibleRows) / 2);
+
+  const symbols = [
+    { ch: "7",  fg: "#ffd166" }, // seven
+    { ch: "♦", fg: "#06d6a0" },  // diamond
+    { ch: "★", fg: "#ff4d6d" },  // star
+    { ch: "B",  fg: "#8da2cb" }, // bell (B)
+    { ch: "C",  fg: "#c6d0f5" }, // cherry (C)
+    { ch: "L",  fg: "#a5d8ff" }, // lemon (L)
+    { ch: "G",  fg: "#b8e994" }, // grape (G)
+    { ch: "M",  fg: "#f4a261" }, // melon (M)
+  ];
+
+  // Heat (0..1) tints reds & trail length
+  let heat = 0.0;
+
+  // --- Canvas & grid ---
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  ctx.textBaseline = "top";
+  ctx.font = font;
+
+  // Simple grid state for colored ASCII
+  const grid = new Array(rows).fill(0).map(() => new Array(cols).fill(null));
+
+  function clearGrid() {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        grid[r][c] = null;
+      }
+    }
+  }
+
+  function setCell(x, y, ch, fg, bg = null) {
+    if (x < 0 || x >= cols || y < 0 || y >= rows) return;
+    grid[y][x] = { ch, fg, bg };
+  }
+
+  function drawGrid() {
+    // Background
+    ctx.fillStyle = "#0e0f13";
+    ctx.fillRect(0, 0, W, H);
+
+    // Panel frame around reels
+    const pad = 2;
+    const panelX = startCol * cellW - pad * cellW;
+    const panelY = (startRow - 3) * cellH;
+    const panelW = (totalColsNeeded + pad * 2) * cellW;
+    const panelH = (visibleRows + 6) * cellH;
+    ctx.fillStyle = "#151722";
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+
+    // Fake CRT scanlines
+    ctx.globalAlpha = 0.08 + 0.04*Math.sin(perfNow*0.002);
+    ctx.fillStyle = "#ffffff";
+    for (let y = 0; y < H; y += 2) {
+      ctx.fillRect(0, y, W, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    // Draw bg colors then glyphs
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cell = grid[r][c];
+        if (!cell) continue;
+        const x = c * cellW;
+        const y = r * cellH;
+        if (cell.bg) {
+          ctx.fillStyle = cell.bg;
+          ctx.fillRect(x, y, cellW, cellH);
+        }
+      }
+    }
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cell = grid[r][c];
+        if (!cell) continue;
+        const x = c * cellW;
+        const y = r * cellH;
+        ctx.fillStyle = cell.fg;
+        ctx.fillText(cell.ch, x, y);
+      }
+    }
+  }
+
+  // --- Reel model ---
+  class Reel {
+    constructor(index) {
+      this.index = index;
+      this.symbols = [];
+      for (let i = 0; i < 64; i++) {
+        this.symbols.push(symbols[Math.floor(Math.random() * symbols.length)]);
+      }
+      this.offset = 0;        // pixel offset animated
+      this.speed = 0;         // pixels per ms
+      this.spinning = false;
+      this.targetStops = 0;   // how many cell heights to travel before stop
+      this.trail = [];        // previous draw rows for trail brightness
+    }
+    startSpin(extraStops) {
+      this.spinning = true;
+      // choose a random initial speed; later reels start slower for cascade feel
+      const base = 1.2 + 0.15 * this.index;
+      this.speed = (cellH * base);
+      this.targetStops = extraStops + 20 + Math.floor(10*Math.random());
+      this.offset = 0;
+      this.trail.length = 0;
+    }
+    update(dt) {
+      if (!this.spinning) return;
+      this.offset += this.speed * dt;
+      const cellsPassed = Math.floor(this.offset / cellH);
+      if (cellsPassed > 0) {
+        // rotate symbols down by cellsPassed
+        for (let n = 0; n < cellsPassed; n++) {
+          const sym = symbols[Math.floor(Math.random() * symbols.length)];
+          this.symbols.unshift(sym);
+          this.symbols.pop();
+        }
+        this.offset -= cellsPassed * cellH;
+        this.targetStops -= cellsPassed;
+        // Decelerate as we approach the end
+        if (this.targetStops < 12) this.speed *= 0.96;
+        if (this.targetStops <= 0) {
+          // Snap to grid
+          this.offset = 0;
+          this.spinning = false;
+        }
+      }
+    }
+    drawToGrid() {
+      // compute top-left of this reel
+      const x0 = startCol + this.index * (reelCols + gapCols);
+      // draw a box background for the visible area (using bg blocks via setCell)
+      for (let y = 0; y < visibleRows; y++) {
+        for (let x = 0; x < reelCols; x++) {
+          setCell(x0 + x, startRow + y, " ", "#000000", "#0f1320");
+        }
+      }
+      // Determine which three symbols are visible
+      // Row anchors
+      const frac = this.offset / cellH; // 0..1
+      const baseIdx = 2; // center of our buffer (arbitrary)
+      for (let r = 0; r < visibleRows+2; r++) {
+        const sym = this.symbols[baseIdx + r];
+        const gy = startRow - 1 + r; // draw one extra above/below for trail
+        const brig = 1.0 - Math.abs(r - 1 - frac) * 0.25;
+        const tint = heat; // 0..1
+        const fg = mixColor(sym.fg, "#ff6b6b", tint);
+        const alpha = clamp(brig, 0.15, 1);
+        const col = applyAlphaToHex(fg, alpha);
+        // center character in reel column (middle of 3 chars wide)
+        setCell(x0 + 1, gy, sym.ch, col, null);
+      }
+      // Fake vertical dividers using line glyphs
+      setCell(x0 - 1, startRow, "║", "#343a5a");
+      setCell(x0 - 1, startRow+1, "║", "#343a5a");
+      setCell(x0 - 1, startRow+2, "║", "#343a5a");
+    }
+    currentMiddleSymbol() {
+      // symbol on the center row after stop
+      return this.symbols[2];
+    }
+  }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function hexToRgb(hx) {
+    const x = hx.replace('#','');
+    const bigint = parseInt(x, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return {r,g,b};
+  }
+  function rgbToHex(r,g,b) {
+    return "#" + [r,g,b].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  function mixColor(hexA, hexB, t) {
+    const a = hexToRgb(hexA), b = hexToRgb(hexB);
+    const r = Math.round(lerp(a.r, b.r, t));
+    const g = Math.round(lerp(a.g, b.g, t));
+    const b2 = Math.round(lerp(a.b, b.b, t));
+    return rgbToHex(r,g,b2);
+  }
+  function applyAlphaToHex(hex, alpha) {
+    // blend against panel background to simulate brightness
+    const bg = hexToRgb("#0f1320");
+    const fg = hexToRgb(hex);
+    const r = Math.round((1 - alpha) * bg.r + alpha * fg.r);
+    const g = Math.round((1 - alpha) * bg.g + alpha * fg.g);
+    const b = Math.round((1 - alpha) * bg.b + alpha * fg.b);
+    return rgbToHex(r,g,b);
+  }
+
+  // Build reels
+  const reels = Array.from({length: reelCount}, (_, i) => new Reel(i));
+
+  // Win pulse state
+  let pulseT = 0; // 0..1 repeating after stop when win
+  let winningSymbol = null;
+  let isWin = false;
+
+  function startSpin() {
+    // Add a tiny heat ramp per spin
+    heat = clamp(heat + 0.08, 0, 1);
+    const extraStops = Math.floor(5 + Math.random()*8);
+    reels.forEach((r, i) => r.startSpin(extraStops + i*2));
+    isWin = false;
+    winningSymbol = null;
+    pulseT = 0;
+  }
+
+  function checkWin() {
+    // Simple win: center row shows the same symbol across 3+ adjacent reels
+    const middle = reels.map(r => r.currentMiddleSymbol().ch);
+    let bestRun = 1, bestStart = 0;
+    for (let i = 1; i < middle.length; i++) {
+      if (middle[i] === middle[i-1]) {
+        if (bestRun === 1) bestStart = i-1;
+        bestRun++;
+      } else {
+        if (bestRun >= 3) break;
+        bestRun = 1;
+      }
+    }
+    if (bestRun >= 3) {
+      isWin = true;
+      winningSymbol = middle[bestStart];
+    } else {
+      isWin = false;
+      winningSymbol = null;
+    }
+  }
+
+  // Input
+  document.getElementById("spinBtn").addEventListener("click", startSpin);
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") {
+      e.preventDefault();
+      startSpin();
+    }
+  });
+
+  let last = performance.now();
+  let perfNow = last;
+
+  function loop() {
+    const now = performance.now();
+    perfNow = now;
+    const dt = (now - last) / 1000; // seconds
+    last = now;
+
+    clearGrid();
+
+    // Draw cabinet ASCII frame
+    const frameTop = startRow - 3, frameBot = startRow + visibleRows + 2;
+    const left = startCol - 3, right = startCol + totalColsNeeded + 2;
+    setCell(left, frameTop, "╔", "#343a5a");
+    setCell(right, frameTop, "╗", "#343a5a");
+    setCell(left, frameBot, "╚", "#343a5a");
+    setCell(right, frameBot, "╝", "#343a5a");
+    for (let x = left+1; x < right; x++) {
+      setCell(x, frameTop, "═", "#343a5a");
+      setCell(x, frameBot, "═", "#343a5a");
+    }
+    for (let y = frameTop+1; y < frameBot; y++) {
+      setCell(left, y, "║", "#343a5a");
+      setCell(right, y, "║", "#343a5a");
+    }
+
+    // Update & draw reels
+    let allStopped = true;
+    reels.forEach(r => {
+      r.update(dt * 1000); // ms-based speed
+      if (r.spinning) allStopped = false;
+      r.drawToGrid();
+    });
+
+    // When all stop, check win & pulse
+    if (allStopped && winningSymbol === null) {
+      checkWin();
+    }
+    if (allStopped && isWin) {
+      // win pulse across center row
+      pulseT += dt * 2.5;
+      const pulse = (Math.sin(pulseT * Math.PI * 2) * 0.5 + 0.5);
+      const bright = clamp(0.4 + 0.6*pulse, 0.2, 1);
+      const centerY = startRow + 1;
+      for (let i = 0; i < reelCount; i++) {
+        const x0 = startCol + i * (reelCols + gapCols);
+        const sym = reels[i].currentMiddleSymbol();
+        const color = applyAlphaToHex("#ffd166", bright);
+        // Highlight background block behind the symbol
+        setCell(x0, centerY, " ", "#000000", mixColor("#3b2b00", "#7a5b00", bright*0.5 + 0.25));
+        setCell(x0+1, centerY, sym.ch, color, null);
+        setCell(x0+2, centerY, " ", "#000000", mixColor("#3b2b00", "#7a5b00", bright*0.5 + 0.25));
+      }
+    }
+
+    // Heat meter (bottom left)
+    const meterCols = 20;
+    const hx = 2, hy = rows - 3;
+    const filled = Math.round(meterCols * heat);
+    for (let i = 0; i < meterCols; i++) {
+      const ch = i < filled ? "▓" : "░";
+      const col = i < filled ? mixColor("#ff4d6d", "#ffd166", i/meterCols) : "#343a5a";
+      setCell(hx + i, hy, ch, col, null);
+    }
+    setCell(hx + meterCols + 1, hy, "H", "#8da2cb");
+    setCell(hx + meterCols + 2, hy, "E", "#8da2cb");
+    setCell(hx + meterCols + 3, hy, "A", "#8da2cb");
+    setCell(hx + meterCols + 4, hy, "T", "#8da2cb");
+
+    drawGrid();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+</body>
+</html>

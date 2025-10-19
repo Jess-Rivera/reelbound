@@ -64,7 +64,7 @@ export function createRoundManager(machine: SlotMachinePort, heat: HeatSystem): 
             winStreak = 0;
             startingSpins = initial.spinsRemaining;
             machine.beginRound();
-            log.push(`Round started in ${st.mode} with ${st.spinsRemaining} spins, ×${st.multiplier.toFixed(1)} multiplier) with ${st.creditsThisRound} credits and heat ${st.heat}.`);
+            log.push(`Round started in ${st.mode} with ${st.spinsRemaining} spins, ×${st.multiplier.toFixed(1)} multiplier with ${st.creditsThisRound} credits and heat ${st.heat}.`);
         },
         /**
          * Answers whether we still have spins left to spend this round.

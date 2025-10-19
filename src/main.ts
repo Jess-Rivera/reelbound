@@ -124,12 +124,12 @@ async function bootstrap() {
     });
   };
 
-const spinButton = document.querySelector<HTMLButtonElement>('#spin');
-  if (!spinButton) {
-    print(['Spin button not found; aborting.']);
-    return;
-  }
-spinButtonEl = spinButton;
+  const spinButton = document.querySelector<HTMLButtonElement>('#spin');
+    if (!spinButton) {
+      print(['Spin button not found; aborting.']);
+      return;
+    }
+  spinButtonEl = spinButton;
 
   const modeButtons = {
     safe: document.querySelector<HTMLButtonElement>('#choose-safe'),
@@ -165,7 +165,7 @@ spinButtonEl = spinButton;
       {
         spinsAllowed: preset.spinsAllowed,
         betCost: 0,
-        targetCredits: undefined,
+        targetCredits: DEMO_TARGET_CREDITS,
       },
       {
         spinsRemaining: preset.spinsAllowed,
@@ -191,7 +191,8 @@ spinButtonEl = spinButton;
 
     print([
       `Round ${fightState.currentRound} (${outcome.mode}) complete.`,
-      `Credits gained: ${outcome.creditsGained.toFixed(2)} (multiplier x${outcome.multiplier.toFixed(1)})})`,
+      `Credits gained: ${outcome.creditsGained.toFixed(2)} (multiplier x${outcome.multiplier.toFixed(1)})`,
+      `Total credits: ${fightState.totalCredits.toFixed(2)}`,
       `Spins used: ${outcome.spinsUsed} / ${ROUND_MODE_PRESETS[outcome.mode].spinsAllowed}`,
       `Heat now: ${outcome.heatEnd}`,
       '',
@@ -330,16 +331,16 @@ spinButtonEl = spinButton;
     // Update inspector to show new positions
     updateInspector();
     spinButtonEl.disabled = !roundManager.canSpin();
-    
-    if (!roundManager.canSpin()) {
-      finishCurrentRound();
-    }
 
+    const totalCreditsFight = state.creditsThisRound + fightState.totalCredits;
     const lines: string[] = [
-      `Payout: ${spin.payout.toFixed(2)}`,
+      `Spins remaining: ${state.spinsRemaining}`, 
       '',
-      'Grid:',
-      spin.grid.map((row: IconId[]) => row.join(' ')).join('\n'),
+      `Credits this round: ${state.creditsThisRound.toFixed(2)}`,
+      '',
+      `Target Credits: ${DEMO_TARGET_CREDITS}`,
+      '',
+      `Total Credits: ${totalCreditsFight.toFixed(2)}`,
     ];
     //TODO This is a repeat of my winConditions.ts?
     if (spin.patterns && spin.patterns.length > 0) {
@@ -377,6 +378,11 @@ spinButtonEl = spinButton;
     }
 
     print(lines);
+
+    if (!roundManager.canSpin()) {
+      finishCurrentRound();
+    }
+
   });
 
   showRoundChoice();
