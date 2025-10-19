@@ -4,7 +4,9 @@
   "name": "Classic Cassie",
   "gridWidth": 3,
   "gridHeight": 3,
-  "totalHeat": 100,            
+  "reelLength": 34,
+  "totalHeat": 100,
+  "HP": 50,            
   "onFireCurvepp": 0.33,
   "corruptionpp": 0.66,  
 

@@ -186,30 +186,26 @@ export interface MachineConfig {
   name: string;
   gridWidth: number;
   gridHeight: number;
-  HP: number;                   // base health for this machine
-  totalHeat: number;            // heat capacity for this machine
+  reelLength: number;                  // base health for this machine
+  totalHeat: number; 
+  HP: number;            // heat capacity for this machine
   onFireCurvepp: number;
   corruptionpp: number;      // heat stage thresholds
 
   // If true, start from a global default pool and then apply overrides/excludes.
   inheritDefaults?: boolean;   // default: false
+  defaultNewIconWeight?: number; // default: 0
+  weightDeltas?: Partial<Record<IconId, number>>;
+  // Ban specific icons even if they exist in defaults.
+  exclude?: IconId[];
+
+  overrides?: Partial<Record<IconId, IconOverride>>;
 
   // Absolute weight overrides for specific icons (partial).
   pool?: Partial<Record<IconId, number>>;
 
-  // For convenience: tweak weights relative to base (partial).
-  weightDeltas?: Partial<Record<IconId, number>>;
-
-  // Ban specific icons even if they exist in defaults.
-  exclude?: IconId[];
-
-  // When inheritDefaults=true and a *new* icon appears in the catalog,
-  // what weight should it get by default?
-  defaultNewIconWeight?: number; // default: 0
-
   themeColor?: string;
   volatility?: number;
-  overrides?: Partial<Record<IconId, IconOverride>>;
   extras?: Record<string, unknown>;
 }
 
@@ -225,6 +221,12 @@ export function isMachineConfig(x: unknown): x is MachineConfig {
   if (typeof o.id !== 'string' || typeof o.name !== 'string') return false;
   //  Grid dimensions
   if (!isPositiveInteger(o.gridWidth) || !isPositiveInteger(o.gridHeight)) return false;
+  if (!isPositiveInteger(o.reelLength)) return false;
+  if (!isPositiveInteger(o.HP)) return false;
+  if (!isFiniteNonNegativeNumber(o.totalHeat)) return false;
+  if (!isFiniteNonNegativeNumber(o.onFireCurvepp)) return false;
+  if (!isFiniteNonNegativeNumber(o.corruptionpp)) return false;
+
   // Optional fields
   if ('inheritDefaults' in o && o.inheritDefaults !== undefined && typeof o.inheritDefaults !== 'boolean') {
     return false;
@@ -286,9 +288,15 @@ export interface MachineRuntime {
   name: string;
   gridWidth: number;
   gridHeight: number;
+  reelLength: number;
+  totalHeat: number;
+  HP: number;
+  onFireCurvepp: number;
+  corruptionpp: number;
   icons: Record<IconId, EffectiveIconInfo>;
   themeColor?: string;
   volatility?: number;
+  extras?: Record<string, unknown>;
 }
 
 /* -------------------------------------------------------

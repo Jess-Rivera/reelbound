@@ -81,6 +81,11 @@ export function buildRuntime(
     name: cfg.name,
     gridWidth: cfg.gridWidth,
     gridHeight: cfg.gridHeight,
+    reelLength: cfg.reelLength,
+    totalHeat: cfg.totalHeat,
+    HP: cfg.HP,
+    onFireCurvepp: cfg.onFireCurvepp,
+    corruptionpp: cfg.corruptionpp,
     icons,
     themeColor: cfg.themeColor,
     volatility: cfg.volatility,
@@ -91,59 +96,48 @@ export function buildRuntime(
    Reel Strip Generation
    ------------------------------ */
 
-/**
- * Generate reel strips by distributing the exact icon pool across all reels.
- * The pool is completely consumed - no icons are added or removed from the total.
- * @param icons - Icon pool with weights (weights = count of that icon)
- * @param numReels - Number of reel strips to generate
- * @param rng - Random number generator for shuffling
- */
 export function generateReelStrips(
   icons: Record<IconId, EffectiveIconInfo>,
   numReels: number,
+  reelLength: number,
   rng: RNG
 ): IconId[][] {
-  // Step 1: Build a flat pool of all icons based on their weights
-  const pool: IconId[] = [];
-  
-  for (const [id, info] of Object.entries(icons) as [IconId, EffectiveIconInfo][]) {
-    const count = Math.floor(info.weight);
-    for (let i = 0; i < count; i++) {
-      pool.push(id);
-    }
-  }
-  
-  if (pool.length === 0) {
-    // Fallback: no icons in pool
-    const fallbackIcon = (ICONS[0] as IconId);
-    return Array(numReels).fill([fallbackIcon]);
-  }
-  
-  // Step 2: Shuffle the entire pool using Fisher-Yates
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(rng.next() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  
-  // Step 3: Distribute icons evenly across reels
-  const baseLength = Math.floor(pool.length / numReels);
-  const remainder = pool.length % numReels;
-  
-  const reelStrips: IconId[][] = [];
-  let poolIndex = 0;
-  
-  for (let reelIdx = 0; reelIdx < numReels; reelIdx++) {
-    // Some reels get one extra icon if there's a remainder
-    const thisReelLength = baseLength + (reelIdx < remainder ? 1 : 0);
-    const strip: IconId[] = [];
-    
-    for (let i = 0; i < thisReelLength; i++) {
-      strip.push(pool[poolIndex++]);
+    const cumulative: { id: IconId; max: number }[] = [];
+    let running = 0;
+    const pickIcon = (): IconId => {
+      const target = rng.next() * running;
+      for (const entry of cumulative) {
+        if (target < entry.max) return entry.id;
+      } 
+      return cumulative[cumulative.length - 1].id;
+    };
+        
+
+   
+    for (const [id, info] of Object.entries(icons) as [IconId, EffectiveIconInfo][]) {
+      const weight = Math.max(0, info.weight);
+      if (!weight) continue;
+      running += weight;
+      cumulative.push({ id, max: running });
     }
     
-    reelStrips.push(strip);
-  }
-  
+    if (running <= 0 || !reelLength) {
+      const fallbackIcon = ICONS[0] as IconId;
+      return Array.from({ length: numReels }, () =>
+        Array.from({ length: Math.max(1, reelLength) }, () => fallbackIcon)
+      );
+    }
+
+    const reelStrips: IconId[][] = [];
+
+    for (let reelIdx = 0; reelIdx < numReels; reelIdx++) {
+      const strip: IconId[] = [];
+      for (let slot = 0; slot < reelLength; slot++) {
+        strip.push(pickIcon());
+    }
+      reelStrips.push(strip);
+    }
+
   return reelStrips;
 }
 
@@ -156,6 +150,7 @@ export class SlotMachine {
   private height: number;
   private reelStrips: IconId[][] = [];
   private reelPositions: number[] = [];
+  private reelLength: number;
 
   constructor(
     private runtime: MachineRuntime,
@@ -163,13 +158,14 @@ export class SlotMachine {
   ) {
     this.width = runtime.gridWidth;
     this.height = runtime.gridHeight;
+    this.reelLength = runtime.reelLength;
     this.initializeReels();
   }
 
   /** Generate reel strips for each column by distributing the exact pool */
   private initializeReels() {
     // Generate all reel strips at once (pool is consumed exactly)
-    this.reelStrips = generateReelStrips(this.runtime.icons, this.width, this.rng);
+    this.reelStrips = generateReelStrips(this.runtime.icons, this.width, this.reelLength, this.rng);
     this.reelPositions = [];
     
     // Start each reel at a random position

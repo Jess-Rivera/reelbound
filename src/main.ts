@@ -60,6 +60,10 @@ async function bootstrap() {
   const machineConfig = cfgCandidate as MachineConfig;
 
   const runtime = buildRuntime(machineConfig, iconMeta);
+  console.log(`[debug] runtime icons:`, Object.fromEntries(
+    Object.entries(runtime.icons).map(([id, info]) => [id, info.weight]
+  )))
+
   const params = new URLSearchParams(window.location.search);
   const seedParam = params.get('seed') ?? params.get('rngSeed');
   const rng = new SimpleRNG(seedParam ?? undefined);
