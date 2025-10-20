@@ -9,6 +9,12 @@ import {
   RNG,
   ICONS,
   RNGSeed,
+  ManualReelState,
+  ManualSpinSession,
+  CELL_SIZE,
+  SPIN_SPEED,
+  AUTO_STOP_DECEL_DISTANCE,
+  AUTO_STOP_MIN_SPEED,
 } from "../types/index";
 import { defaultPool as DEFAULT_ICON_POOL } from "../data/defaultPool";
 import { evaluateGrid } from "./winEvaluator";
@@ -86,6 +92,7 @@ export function buildRuntime(
     HP: cfg.HP,
     onFireCurvepp: cfg.onFireCurvepp,
     corruptionpp: cfg.corruptionpp,
+    spinDuration: cfg.spinDuration,
     icons,
     themeColor: cfg.themeColor,
     volatility: cfg.volatility,
@@ -102,41 +109,40 @@ export function generateReelStrips(
   reelLength: number,
   rng: RNG
 ): IconId[][] {
-    const cumulative: { id: IconId; max: number }[] = [];
-    let running = 0;
-    const pickIcon = (): IconId => {
-      const target = rng.next() * running;
-      for (const entry of cumulative) {
-        if (target < entry.max) return entry.id;
-      } 
-      return cumulative[cumulative.length - 1].id;
-    };
-        
+  const cumulative: { id: IconId; max: number }[] = [];
+  let running = 0;
 
-   
-    for (const [id, info] of Object.entries(icons) as [IconId, EffectiveIconInfo][]) {
-      const weight = Math.max(0, info.weight);
-      if (!weight) continue;
-      running += weight;
-      cumulative.push({ id, max: running });
-    }
-    
-    if (running <= 0 || !reelLength) {
-      const fallbackIcon = ICONS[0] as IconId;
-      return Array.from({ length: numReels }, () =>
-        Array.from({ length: Math.max(1, reelLength) }, () => fallbackIcon)
-      );
-    }
+  for (const [id, info] of Object.entries(icons) as [IconId, EffectiveIconInfo][]) {
+    const weight = Math.max(0, info.weight);
+    if (!weight) continue;
+    running += weight;
+    cumulative.push({ id, max: running });
+  }
 
-    const reelStrips: IconId[][] = [];
+  if (running <= 0 || !reelLength) {
+    const fallbackIcon = ICONS[0] as IconId;
+    return Array.from({ length: numReels }, () =>
+      Array.from({ length: Math.max(1, reelLength) }, () => fallbackIcon)
+    );
+  }
 
-    for (let reelIdx = 0; reelIdx < numReels; reelIdx++) {
-      const strip: IconId[] = [];
-      for (let slot = 0; slot < reelLength; slot++) {
-        strip.push(pickIcon());
+  const pickIcon = (): IconId => {
+    const target = rng.next() * running;
+    for (const entry of cumulative) {
+      if (target < entry.max) return entry.id;
     }
-      reelStrips.push(strip);
+    return cumulative[cumulative.length - 1].id;
+  };
+
+  const reelStrips: IconId[][] = [];
+
+  for (let reelIdx = 0; reelIdx < numReels; reelIdx++) {
+    const strip: IconId[] = [];
+    for (let slot = 0; slot < reelLength; slot++) {
+      strip.push(pickIcon());
     }
+    reelStrips.push(strip);
+  }
 
   return reelStrips;
 }
@@ -151,6 +157,9 @@ export class SlotMachine {
   private reelStrips: IconId[][] = [];
   private reelPositions: number[] = [];
   private reelLength: number;
+  private manualSession: ManualSpinSession | null = null;
+  private activeReelIndex = 0;
+  private readonly MANUAL_SPIN_ROWS_PER_MS = 5;
 
   constructor(
     private runtime: MachineRuntime,
@@ -173,6 +182,25 @@ export class SlotMachine {
       const stripLength = this.reelStrips[col].length;
       this.reelPositions.push(Math.floor(this.rng.next() * stripLength));
     }
+  }
+
+  private buildManualReelStates(): ManualReelState[] {
+    return this.reelStrips.map((strip, col) => {
+      const position = this.reelPositions[col];
+      const nextIndex = (position +1) % strip.length;
+      const spinSpeed = SPIN_SPEED;
+
+      return{
+        strip,
+        position,
+        offsetPx: 0,
+        velocity: spinSpeed,
+        state: `spinning`,
+        previewIcon: strip[nextIndex],
+        finalIcon: undefined,
+        finalIndex: undefined,
+      };
+    });
   }
 
   /** Get the current visible grid based on reel positions */
@@ -278,6 +306,137 @@ export class SlotMachine {
   /** Build grid from current reel positions */
   private buildGrid(): IconId[][] {
     return this.getVisibleGrid();
+  }
+
+  startManualSession(): ManualSpinSession {
+    if (this.manualSession) throw new Error(`Manual session already active`);
+
+    const reels = this.buildManualReelStates();
+    const now = performance.now();
+    const session: ManualSpinSession = {
+      reels,
+      status: `spinning`,
+      activeReelIndex: 0,
+      startedAt: now,
+      deadline: now + this.runtime.spinDuration,
+      timeRemaining: this.runtime.spinDuration,
+      timedOut: false,
+    };
+
+    this.manualSession = session;
+    this.activeReelIndex = 0;
+
+    return session;
+  }
+
+  updateManualSession(elapsedMs: number): void {
+    if (!this.manualSession) return;
+
+    const session = this.manualSession;
+    const speed = this.MANUAL_SPIN_ROWS_PER_MS;
+    const cellHeight = CELL_SIZE;
+
+    session.reels.forEach((reelState) => {
+      if (reelState.state !== 'spinning') return;
+
+      reelState.offsetPx =
+        (reelState.offsetPx + speed * elapsedMs) %
+        (reelState.strip.length * cellHeight);
+      const steps = Math.floor(reelState.offsetPx / cellHeight);
+      if (steps > 0) {
+        reelState.position =
+          (reelState.position + steps) % reelState.strip.length;
+        reelState.offsetPx -= steps * cellHeight;
+
+        const nextIndex = (reelState.position + 1) % reelState.strip.length;
+        reelState.previewIcon = reelState.strip[nextIndex];
+      }
+    });
+
+    session.timeRemaining = Math.max(0, session.deadline - performance.now());
+    if (session.timeRemaining === 0 && !session.timedOut) {
+      this.forceTimeoutStop();
+    }
+  }
+
+  requestStopNextReel(): ManualReelState | null {
+    if (!this.manualSession) return null;
+
+    const session = this.manualSession;
+    const reelState = session.reels[this.activeReelIndex];
+    if (!reelState || reelState.state !== 'spinning') return null;
+
+    reelState.state = 'stopping';
+    reelState.stopRequestedAt = performance.now();
+    reelState.stopProfile = `manual`;
+    session.status = 'stopping';
+
+    return reelState;
+  }
+
+  confirmReelStopped(col: number): void {
+    if (!this.manualSession) return;
+
+    const session = this.manualSession;
+    const reel = session.reels[col];
+    if (!reel || reel.state === 'stopped') return;
+
+    const strip = reel.strip;
+    const finalIndex = ((reel.position % strip.length) + strip.length) % strip.length;
+    reel.finalIndex = finalIndex;
+    reel.finalIcon = strip[finalIndex];
+    reel.state = 'stopped';
+    reel.offsetPx = 0;
+
+    this.reelPositions[col] = finalIndex;
+
+    this.activeReelIndex = Math.min(this.activeReelIndex + 1, this.width - 1);
+    session.activeReelIndex = this.activeReelIndex;
+
+    if (session.reels.every((r) => r.state === 'stopped')) {
+      const grid = this.buildGrid();
+      const evaluation = evaluateGrid(grid, this.runtime);
+      session.spinResult = { grid, ...evaluation };
+      session.status = session.timedOut ? 'timed_out' : 'stopped';
+    }
+  }
+
+  completeManualSession(): SpinResult {
+    if (!this.manualSession) {
+      throw new Error('Manual session not active');
+    }
+    if (
+      this.manualSession.status !== 'stopped' &&
+      this.manualSession.status !== 'timed_out'
+    ) {
+      throw new Error('Manual session not finished');
+    }
+
+    const grid = this.buildGrid();
+    const outcome =
+      this.manualSession.spinResult ?? { grid, ...evaluateGrid(grid, this.runtime) };
+
+    this.manualSession = null;
+    this.activeReelIndex = 0;
+
+    return outcome;
+  }
+
+  forceTimeoutStop(): void {
+    if (!this.manualSession || this.manualSession.timedOut) return;
+
+    const session = this.manualSession;
+    session.timedOut = true;
+    session.status = 'stopping';
+    session.timeRemaining = 0;
+
+    session.reels.forEach((reel) => {
+      if (reel.state === 'stopped') return;
+      reel.state = 'stopping';
+      reel.stopProfile = `forced`;
+      reel.decelDistance = AUTO_STOP_DECEL_DISTANCE;
+      reel.minSpeed = AUTO_STOP_MIN_SPEED;
+    });
   }
 
   /** One complete spin */

@@ -3,7 +3,7 @@ import { ReelHandler } from './core/reelHandler';
 import { ReelInspector } from './ui/reelInspector';
 import { iconMeta } from './data/iconMetaTable';
 import machineConfigData from './data/machines/selectableMachines.json';
-import { isMachineConfig, MachineConfig, RNG, RNGSeed, ICONS, IconId } from './types/index';
+import { isMachineConfig, MachineConfig, RNG, RNGSeed, ICONS, IconId, ManualSpinSession } from './types/index';
 import { createRoundManager } from './game/run/roundManager';
 import { createHeatSystem } from './game/systems/heatSystem';
 import { ROUND_MODE_PRESETS, RoundModePreset } from './game/types';
@@ -75,6 +75,11 @@ async function bootstrap() {
   let orderLocked = false;
   let lockButton: HTMLButtonElement | null = null;
   let spinButtonEl: HTMLButtonElement;
+  let stopButtonEl: HTMLButtonElement;
+  let manualSession: ManualSpinSession | null = null;
+  let stopButtonLocked = false;
+  let manualRafId: number | null = null;
+  let manualLastTimestamp = 0;
 
   const DEMO_TOTAL_ROUNDS = 3;
   const DEMO_TARGET_CREDITS = 10;
@@ -129,11 +134,14 @@ async function bootstrap() {
   };
 
   const spinButton = document.querySelector<HTMLButtonElement>('#spin');
-    if (!spinButton) {
-      print(['Spin button not found; aborting.']);
-      return;
-    }
+  if (!spinButton) throw new Error('Spin button not found');
   spinButtonEl = spinButton;
+
+  const stopButton = document.querySelector<HTMLButtonElement>('#stop');
+  if (!stopButton) throw new Error('Stop button not found');
+  stopButtonEl = stopButton;
+  stopButtonEl.disabled = true;
+  const timerEl = document.querySelector<HTMLSpanElement>('#manual-timer');
 
   const modeButtons = {
     safe: document.querySelector<HTMLButtonElement>('#choose-safe'),
@@ -225,6 +233,160 @@ async function bootstrap() {
     showRoundChoice();
   }
 
+  function handleReelSettled(column: number) {
+    if (!manualSession) return;
+
+    slotMachine.confirmReelStopped(column);
+    const session = manualSession;
+    const allStopped = session.reels.every((reel) => reel.state === `stopped`);
+
+    if (allStopped) {
+      finalizeManualSpin();
+    } else if (!session.timedOut) {
+      stopButtonLocked = false;
+      stopButtonEl.disabled = false;
+    }
+  }
+
+  function finalizeManualSpin() {
+    if (!manualSession) return;
+    stopButtonEl.disabled = true;
+    stopButtonLocked = false;
+    stopManualTimer();
+
+    const result = slotMachine.completeManualSession();
+    const state = roundManager.applyManualResult(result);
+    fightState.heat = state.heat;
+    reel.render(result.grid);
+    updateInspector();
+    manualSession = null;
+
+    const totalCreditsFight = state.creditsThisRound + fightState.totalCredits;
+    const lines: string[] = [
+      `Spins remaining: ${state.spinsRemaining}`,
+      '',
+      `Credits this round: ${state.creditsThisRound.toFixed(2)}`,
+      '',
+      `Target Credits: ${DEMO_TARGET_CREDITS}`,
+      '',
+      `Total Credits: ${totalCreditsFight.toFixed(2)}`,
+    ];
+
+    if (result.patterns && result.patterns.length > 0) {
+      lines.push('', 'Wins:');
+      let runningTotal = 0;
+      for (const pattern of result.patterns) {
+        const firstCell = pattern.cells[0];
+        const sameRow = pattern.cells.every(({ r }) => r === firstCell.r);
+        const sameCol = pattern.cells.every(({ c }) => c === firstCell.c);
+        const orientation =
+          pattern.type === 'diagonal'
+            ? 'Diagonal'
+            : sameRow
+              ? 'Horizontal'
+              : sameCol
+                ? 'Vertical'
+                : 'Line';
+        const length = pattern.cells.length;
+        const icon = pattern.icons[0];
+        const iconInfo = runtime.icons[icon];
+        const iconName = iconMeta[icon]?.id ?? icon;
+        const baseMult = iconInfo?.basemult ?? 1;
+        runningTotal += pattern.multiplier;
+        lines.push(
+          `${orientation} ${length}x ${iconName}: ${baseMult} x ${length} = ${pattern.multiplier.toFixed(
+            2
+          )}`
+        );
+      }
+      if (Math.abs(runningTotal - (result.payout ?? 0)) > 1e-6) {
+        lines.push(
+          '',
+          `Payout mismatch: breakdown total ${runningTotal.toFixed(
+            2
+          )} vs result ${(result.payout ?? 0).toFixed(2)}`
+        );
+      }
+    } else {
+      lines.push('', 'Wins: none');
+    }
+
+    print(lines);
+
+    if (!roundManager.canSpin()) finishCurrentRound();
+    else spinButtonEl.disabled = false;
+  }
+
+  function manualFrame(timestamp: number): void {
+    if (!manualSession) {
+      stopManualLoop();
+      return;
+    }
+
+    if (manualLastTimestamp === 0) {
+      manualLastTimestamp = timestamp;
+    }
+    const deltaMs = timestamp - manualLastTimestamp;
+    manualLastTimestamp = timestamp;
+
+    slotMachine.updateManualSession(deltaMs);
+    if (manualSession) {
+      updateManualTimer(manualSession);
+    }
+
+    if (manualSession) {
+      manualRafId = requestAnimationFrame(manualFrame);
+    } else {
+      stopManualLoop();
+    }
+  }
+
+  function startManualLoop() {
+    stopManualLoop();
+    manualLastTimestamp = 0;
+    manualRafId = requestAnimationFrame(manualFrame);
+  }
+
+  function stopManualLoop() {
+    if (manualRafId !== null) {
+      cancelAnimationFrame(manualRafId);
+      manualRafId = null;
+    }
+    manualLastTimestamp = 0;
+  }
+
+  function startManualTimer(session: ManualSpinSession) {
+    if (timerEl) {
+      timerEl.classList.remove('hidden');
+    }
+    updateManualTimer(session);
+    startManualLoop();
+  }
+
+  function updateManualTimer(session: ManualSpinSession) {
+    const remainingMs = Math.max(
+      0,
+      session.timeRemaining ?? session.deadline - performance.now()
+    );
+
+    if (remainingMs <= 0 && !session.timedOut) {
+      slotMachine.forceTimeoutStop();
+      stopButtonLocked = true;
+      stopButtonEl.disabled = true;
+    }
+
+    if (timerEl) {
+      timerEl.textContent = `Timer: ${(remainingMs / 1000).toFixed(2)}s`;
+    }
+  }
+
+  function stopManualTimer() {
+    stopManualLoop();
+    if (timerEl) {
+      timerEl.classList.add('hidden');
+      timerEl.textContent = 'Timer: 0.00s';
+    }
+  }
 
   // Expose debug interface (all at once)
   if (typeof window !== 'undefined') {
@@ -298,9 +460,6 @@ async function bootstrap() {
     lockButton.addEventListener('click', () => lockReelsForRound('button'));
   }
 
-
-  
-
   if (machineLabel) {
     machineLabel.textContent = runtime.name;
   }
@@ -322,71 +481,38 @@ async function bootstrap() {
     if (!roundManager.canSpin()) return;
 
     lockReelsForRound('spin');
-    spinButtonEl.disabled = true;
+    spinButtonEl.disabled = true;    
     
+    manualSession = slotMachine.startManualSession();
+    stopButtonEl.disabled = false;
+    stopButtonLocked = false;
+
+    reel.beginManualAnimation(manualSession, handleReelSettled);
+    startManualTimer(manualSession);
+    /*
     const { spin, state } = roundManager.spin(); 
     
     // Get reel strips for animation
     const reelStrips = slotMachine.getAllReelStrips();
     
     // Animate with actual reel strips
-    await reel.animateWithReels(spin.grid, reelStrips);
+    await reel.animateWithReels(spin.grid, reelStrips);*/
     
     // Update inspector to show new positions
     updateInspector();
     spinButtonEl.disabled = !roundManager.canSpin();
 
-    const totalCreditsFight = state.creditsThisRound + fightState.totalCredits;
-    const lines: string[] = [
-      `Spins remaining: ${state.spinsRemaining}`, 
-      '',
-      `Credits this round: ${state.creditsThisRound.toFixed(2)}`,
-      '',
-      `Target Credits: ${DEMO_TARGET_CREDITS}`,
-      '',
-      `Total Credits: ${totalCreditsFight.toFixed(2)}`,
-    ];
-    //TODO This is a repeat of my winConditions.ts?
-    if (spin.patterns && spin.patterns.length > 0) {
-      lines.push('', 'Wins:');
-      let runningTotal = 0;
-      for (const pattern of spin.patterns) {
-        const firstCell = pattern.cells[0];
-        const sameRow = pattern.cells.every(({ r }) => r === firstCell.r);
-        const sameCol = pattern.cells.every(({ c }) => c === firstCell.c);
-        const orientation =
-          pattern.type === 'diagonal'
-            ? 'Diagonal'
-            : sameRow
-              ? 'Horizontal'
-              : sameCol
-                ? 'Vertical'
-                : 'Line';
-        const length = pattern.cells.length;
-        const icon = pattern.icons[0];
-        const iconInfo = runtime.icons[icon];
-        const iconName = iconMeta[icon]?.id ?? icon;
-        const baseMult = iconInfo?.basemult ?? 1;
-        runningTotal += pattern.multiplier;
-        lines.push(
-          `${orientation} ${length}x ${iconName}: ${baseMult} x ${length} = ${pattern.multiplier.toFixed(
-            2
-          )}`
-        );
-      }
-      if (Math.abs(runningTotal - spin.payout) > 1e-6) {
-        lines.push('', `Payout mismatch: breakdown total ${runningTotal.toFixed(2)} vs result ${spin.payout.toFixed(2)}`);
-      }
-    } else {
-      lines.push('', 'Wins: none');
-    }
+    // Manual spins finalize asynchronously; logging occurs in finalizeManualSpin once all reels stop.
+  });
 
-    print(lines);
+  stopButtonEl.addEventListener('click', async () => {
+    if (!manualSession || stopButtonLocked) return;
 
-    if (!roundManager.canSpin()) {
-      finishCurrentRound();
-    }
-
+    stopButtonLocked = true;
+    slotMachine.requestStopNextReel();
+    reel.markReelStopping(manualSession);
+    updateManualTimer(manualSession);
+    
   });
 
   showRoundChoice();

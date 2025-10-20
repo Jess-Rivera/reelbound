@@ -94,6 +94,16 @@
       .spin-controls {
         display: flex;
         gap: 12px;
+        align-items: center;
+      }
+      .timer-display {
+        font-size: 0.85rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #f6b26b;
+      }
+      .timer-display.hidden {
+        display: none;
       }
       button {
         padding: 12px 18px;
@@ -315,6 +325,7 @@
               <button id="lock-order" class="lock-button">Lock Order</button>
               <button id="spin">Spin</button>
               <button id="stop" class="lock-button">Stop</button>
+              <span id="manual-timer" class="timer-display hidden">Timer: 0.00s</span>
             </div>
           </div>
       </aside>

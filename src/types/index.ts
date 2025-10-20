@@ -19,6 +19,14 @@ export const ICONS = [
   'bell',
   'star'
 ] as const;
+export const CELL_SIZE = 96;
+export const SPIN_SPEED = 25;
+export const DECEL_DISTANCE = 480;
+export const AUTO_STOP_DECEL_DISTANCE = 240;
+export const MIN_SPEED = 2;
+export const AUTO_STOP_MIN_SPEED = 8;
+export const BOUNCE_AMOUNT = 12;
+
 
 export type IconId = (typeof ICONS)[number];
 
@@ -191,7 +199,7 @@ export interface MachineConfig {
   HP: number;            // heat capacity for this machine
   onFireCurvepp: number;
   corruptionpp: number;      // heat stage thresholds
-
+  spinDuration: number;
   // If true, start from a global default pool and then apply overrides/excludes.
   inheritDefaults?: boolean;   // default: false
   defaultNewIconWeight?: number; // default: 0
@@ -226,6 +234,7 @@ export function isMachineConfig(x: unknown): x is MachineConfig {
   if (!isFiniteNonNegativeNumber(o.totalHeat)) return false;
   if (!isFiniteNonNegativeNumber(o.onFireCurvepp)) return false;
   if (!isFiniteNonNegativeNumber(o.corruptionpp)) return false;
+  if (!isFiniteNonNegativeNumber(o.spinDuration)) return false;
 
   // Optional fields
   if ('inheritDefaults' in o && o.inheritDefaults !== undefined && typeof o.inheritDefaults !== 'boolean') {
@@ -293,6 +302,7 @@ export interface MachineRuntime {
   HP: number;
   onFireCurvepp: number;
   corruptionpp: number;
+  spinDuration: number;
   icons: Record<IconId, EffectiveIconInfo>;
   themeColor?: string;
   volatility?: number;
@@ -498,12 +508,14 @@ export interface PlayerProfile {
 /* ---------- Manual Spin Contracts ---------- */
 
 export interface ManualSpinSession {
- reels: ManualReelState[];
- status: `idle` | `spinning` | `stopping` | `complete` | `timed_out`;
- activeReelIndex: number;
- startAt: number;
- deadline: number;
- spinResult?: SpinResult;
+  reels: ManualReelState[];
+  status: `spinning` | `stopping` | `stopped` | `timed_out`;
+  activeReelIndex: number;
+  startedAt: number;
+  deadline: number;
+  timeRemaining?: number;
+  timedOut?: boolean;
+  spinResult?: SpinResult;
 }
 
 export interface ManualReelState {
@@ -511,12 +523,15 @@ export interface ManualReelState {
   position: number;
   offsetPx: number;
   velocity: number;
-  isStopped: boolean;
+  state: `spinning` | `stopping` | `stopped` | `timed_out`;
   finalIndex?: number;
   finalIcon?: IconId;
   previewIcon?: IconId;
   spinStartTime?: number;
   stopRequestedAt?: number;
+  stopProfile?: `manual` | `forced`;
+  decelDistance?: number;
+  minSpeed?: number;
 }
 
 /* ---------- Spin result & patterns ---------- */

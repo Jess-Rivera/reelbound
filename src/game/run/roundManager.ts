@@ -34,6 +34,8 @@ export interface RoundManager {
     canSpin(): boolean;
     /** Executes one spin and returns both the spin outcome and current round state snapshot. */
     spin(): {spin: SpinResult; state: RoundState};
+    /** Applies a spin result produced elsewhere (e.g., manual stop flow) to the round state. */
+    applyManualResult(result: SpinResult): RoundState;
     /** Finalizes the round and emits the aggregate outcome for downstream systems. */
     finish(): RoundOutcome;
 }
@@ -92,6 +94,23 @@ export function createRoundManager(machine: SlotMachinePort, heat: HeatSystem): 
                 `Spin: raw=${rawPayout.toFixed(2)} scaled=${scaledPayout.toFixed(2)} multiplier=×${st.multiplier.toFixed(1)} streak=${winStreak} heat=${st.heat} tier=${heat.getHeatTier(st.heat)}`
             );
             return { spin: spinResult, state: { ...st } };
+        },
+        applyManualResult(result) {
+            if (!this.canSpin()) throw new Error("No spins remaining");
+            st.spinsRemaining -= 1;
+
+            const rawPayout = result.payout ?? 0;
+            const scaledPayout = rawPayout * st.multiplier;
+            st.creditsThisRound += scaledPayout;
+
+            if (rawPayout > 0) winStreak++; else winStreak = 0;
+            st.heat = heat.onSpin(st.heat, result, winStreak);
+
+            log.push(
+                `Manual spin: raw=${rawPayout.toFixed(2)} scaled=${scaledPayout.toFixed(2)} multiplier=A-${st.multiplier.toFixed(1)} streak=${winStreak} heat=${st.heat} tier=${heat.getHeatTier(st.heat)}`
+            );
+
+            return { ...st };
         },
 
         /**

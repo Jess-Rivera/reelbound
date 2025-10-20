@@ -1,48 +1,48 @@
-// Enhanced ReelHandler.ts with smooth reel animation
-import { Grid, IconId, ReelView, IconMetaTable } from '../types/index';
+import {
+  Grid,
+  IconId,
+  ReelView,
+  IconMetaTable,
+  CELL_SIZE,
+  SPIN_SPEED,
+  MIN_SPEED,
+  ManualSpinSession,
+  ManualReelState,
+  DECEL_DISTANCE,
+} from '../types/index';
 
-interface ReelState {
-  currentIcons: IconId[];  // strip of icons currently visible
-  offset: number;          // vertical pixel offset
-  targetOffset: number;    // where we want to stop
-  velocity: number;        // current speed
-  isSpinning: boolean;
-  finalIcon: IconId;       // what icon should land in view
-}
+const FRAME_DURATION_MS = 1000 / 60;
+const FRAMES_PER_MS = 1 / FRAME_DURATION_MS; // ~0.06 at 60 FPS
+const STOP_EPSILON = 0.5;
 
 export class ReelHandler implements ReelView {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private icons: Record<IconId, HTMLImageElement> = {} as any;
-  private cell = 96;
-  
-  // Animation state per column
-  private reelStates: ReelState[] = [];
-  private animationFrameId: number | null = null;
+
+  private cell = CELL_SIZE;
   private width = 0;
   private height = 0;
 
-  // Physics constants
-  private readonly SPIN_SPEED = 25;        // pixels per frame when spinning (slower)
-  private readonly DECEL_DISTANCE = 480;   // start slowing down this many pixels before target
-  private readonly MIN_SPEED = 2;          // minimum speed before snap
-  private readonly BOUNCE_AMOUNT = 12;     // pixels to overshoot then bounce back
+  private animationFrameId: number | null = null;
+  private lastFrameTime: number | null = null;
 
-  constructor(canvasSelector: string, cellSize = 96) {
+  private manualSession: ManualSpinSession | null = null;
+  private onReelSettled: ((column: number) => void) | null = null;
+
+  constructor(canvasSelector: string, cellSize = CELL_SIZE) {
     const el = document.querySelector(canvasSelector);
-    if (!(el instanceof HTMLCanvasElement)) throw new Error("Canvas not found");
+    if (!(el instanceof HTMLCanvasElement)) throw new Error('Canvas not found');
     this.canvas = el;
-    const ctx = this.canvas.getContext("2d");
-    if (!ctx) throw new Error("2D context not available");
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) throw new Error('2D context not available');
     this.ctx = ctx;
     this.cell = cellSize;
     this.setupDPR();
   }
 
-  private setupDPR() {
-    const dpr = window.devicePixelRatio || 1;
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.ctx.imageSmoothingEnabled = false;
+  getCellSize(): number {
+    return this.cell;
   }
 
   async loadIcons(meta: IconMetaTable): Promise<void> {
@@ -50,40 +50,34 @@ export class ReelHandler implements ReelView {
       const src = info.spriteUrl;
       if (!src) return [];
       return [
-        new Promise<void>((res) => {
+        new Promise<void>((resolve) => {
           const img = new Image();
           img.src = src;
           img.onload = () => {
             this.icons[id as IconId] = img;
-            res();
+            resolve();
           };
           img.onerror = (ev) => {
             console.warn(`Failed to load sprite for ${id} from ${src}`, ev);
-            res();
+            resolve();
           };
         }),
       ];
     });
+
     await Promise.all(tasks);
   }
 
-  // Instant render (no animation) - original behavior
   render(grid: Grid<IconId>): void {
     this.height = grid.length;
     this.width = this.height ? grid[0].length : 0;
     this.setupCanvas();
 
-    // Cancel any ongoing animation
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
+    this.cancelAnimation();
 
-    // Clear background
-    this.ctx.fillStyle = "#0d111a";
+    this.ctx.fillStyle = '#0d111a';
     this.ctx.fillRect(0, 0, this.width * this.cell, this.height * this.cell);
 
-    // Draw grid
     for (let r = 0; r < this.height; r++) {
       for (let c = 0; c < this.width; c++) {
         this.drawIcon(grid[r][c], c * this.cell, r * this.cell);
@@ -91,217 +85,212 @@ export class ReelHandler implements ReelView {
     }
   }
 
-  // Animated spin with actual reel strips - returns promise that resolves when animation completes
-  async animateWithReels(finalGrid: Grid<IconId>, reelStrips: IconId[][]): Promise<void> {
-    this.height = finalGrid.length;
-    this.width = this.height ? finalGrid[0].length : 0;
+  beginManualAnimation(
+    session: ManualSpinSession,
+    onSettled: (column: number) => void
+  ): void {
+    this.manualSession = session;
+    this.onReelSettled = onSettled;
+    this.width = session.reels.length;
+    if (!this.height) {
+      // fall back to a 3-row view; caller should have rendered once already, but guard anyway
+      this.height = 3;
+    }
     this.setupCanvas();
 
-    // Initialize or update reel states for each column using actual reel strips
-    // If reelStates already exist, preserve their current offset to avoid flicker
-    const existingStates = this.reelStates.length > 0;
-    
-    if (!existingStates) {
-      this.reelStates = [];
+    this.cancelAnimation();
+    this.lastFrameTime = null;
+    this.animationFrameId = requestAnimationFrame(this.manualLoop);
+  }
+
+  markReelStopping(session: ManualSpinSession): void {
+    // Keep reference updated in case caller mutated a cloned session object.
+    if (this.manualSession !== session) {
+      this.manualSession = session;
     }
-    
-    for (let col = 0; col < this.width; col++) {
-      const strip = reelStrips[col] || [];
-      
-      if (existingStates && this.reelStates[col]) {
-        // Update existing state, preserve current offset
-        this.reelStates[col].currentIcons = strip;
-        this.reelStates[col].velocity = 0;
-        this.reelStates[col].isSpinning = false;
-        this.reelStates[col].finalIcon = finalGrid[0][col];
-      } else {
-        // Create new state
-        this.reelStates.push({
-          currentIcons: strip,
-          offset: 0,
-          targetOffset: 0,
-          velocity: 0,
-          isSpinning: false,
-          finalIcon: finalGrid[0][col],
-        });
-      }
+    if (this.animationFrameId === null) {
+      this.lastFrameTime = null;
+      this.animationFrameId = requestAnimationFrame(this.manualLoop);
+    }
+  }
+
+  endManualAnimation(): void {
+    this.cancelAnimation();
+    this.manualSession = null;
+    this.onReelSettled = null;
+    this.lastFrameTime = null;
+  }
+
+  private manualLoop = (timestamp: number) => {
+    if (!this.manualSession) {
+      this.animationFrameId = null;
+      return;
     }
 
-    return new Promise((resolve) => {
-      this.startSpinAnimation(finalGrid, resolve);
+    if (this.lastFrameTime === null) {
+      this.lastFrameTime = timestamp;
+    }
+    const deltaMs = timestamp - this.lastFrameTime;
+    this.lastFrameTime = timestamp;
+    const deltaFrames = deltaMs * FRAMES_PER_MS;
+
+    const session = this.manualSession;
+    let anyActive = false;
+
+    this.ctx.fillStyle = '#0d111a';
+    this.ctx.fillRect(0, 0, this.width * this.cell, this.height * this.cell);
+
+    session.reels.forEach((reel, col) => {
+      switch (reel.state) {
+        case 'spinning':
+          this.advanceSpinningReel(reel, deltaFrames);
+          this.drawLoopingStrip(reel, col);
+          anyActive = true;
+          break;
+        case 'stopping': {
+          const stillMoving = this.advanceStoppingReel(reel, deltaFrames);
+          this.drawLoopingStrip(reel, col);
+          if (!stillMoving) this.handleReelSettled(col);
+          anyActive = anyActive || stillMoving;
+          break;
+        }
+        default:
+          this.drawStoppedStrip(reel, col);
+      }
     });
+
+    if (anyActive) {
+      this.animationFrameId = requestAnimationFrame(this.manualLoop);
+    } else {
+      this.animationFrameId = null;
+      this.lastFrameTime = null;
+    }
+  };
+
+  private advanceSpinningReel(reel: ManualReelState, deltaFrames: number): void {
+    const stripHeightPx = reel.strip.length * this.cell;
+    reel.offsetPx = (reel.offsetPx + reel.velocity * deltaFrames) % stripHeightPx;
+
+    const steps = Math.floor(reel.offsetPx / this.cell);
+    if (steps > 0) {
+      reel.position = (reel.position + steps) % reel.strip.length;
+      reel.offsetPx -= steps * this.cell;
+
+      const nextIndex = (reel.position + 1) % reel.strip.length;
+      reel.previewIcon = reel.strip[nextIndex];
+    }
   }
 
-  private startSpinAnimation(finalGrid: Grid<IconId>, onComplete: () => void) {
-    const startTime = performance.now();
-    const bouncingReels = new Set<number>(); // track which reels are bouncing
+  private advanceStoppingReel(
+    reel: ManualReelState,
+    deltaFrames: number
+  ): boolean {
+    const targetMin = reel.minSpeed ?? MIN_SPEED;
+    const decelDistance = reel.decelDistance ?? DECEL_DISTANCE;
+    const symbolsToStop = Math.max(1, decelDistance / this.cell);
 
-    // Timing configuration
-    const RAPID_SPIN_DURATION = 2000; // 2 seconds of rapid spinning
-    const FIRST_REEL_MIN_DELAY = 300; // min additional delay for first reel
-    const FIRST_REEL_MAX_DELAY = 500; // max additional delay for first reel
-    const REEL_STAGGER = 500; // base delay between reels (0.5 seconds)
-    const JITTER_AMOUNT = 100; // random jitter per reel (±50ms)
-    const BOUNCE_DURATION = 150; // 150ms bounce
+    const decelPerFrame =
+      (reel.velocity - targetMin) / symbolsToStop || reel.velocity;
 
-    // Calculate stop times for each reel
-    const stopTimes: number[] = [];
-    for (let col = 0; col < this.width; col++) {
-      const firstReelDelay = FIRST_REEL_MIN_DELAY + 
-        Math.random() * (FIRST_REEL_MAX_DELAY - FIRST_REEL_MIN_DELAY);
-      const reelOffset = col * REEL_STAGGER;
-      const jitter = (Math.random() - 0.5) * JITTER_AMOUNT;
-      
-      stopTimes.push(RAPID_SPIN_DURATION + firstReelDelay + reelOffset + jitter);
+    reel.velocity = Math.max(targetMin, reel.velocity - decelPerFrame * deltaFrames);
+    this.advanceSpinningReel(reel, deltaFrames);
+
+    const aligned =
+      reel.velocity <= targetMin + 0.01 && Math.abs(reel.offsetPx) <= STOP_EPSILON;
+
+    if (aligned) {
+      reel.offsetPx = 0;
+      reel.state = 'stopped';
+      return false;
     }
 
-    const animationLoop = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      
-      // Clear canvas
-      this.ctx.fillStyle = "#0d111a";
-      this.ctx.fillRect(0, 0, this.width * this.cell, this.height * this.cell);
-
-      let stillSpinning = false;
-
-      // Update and draw each column
-      for (let col = 0; col < this.width; col++) {
-        const reel = this.reelStates[col];
-        const spinDuration = stopTimes[col];
-        const bounceStart = spinDuration;
-
-        if (elapsed < spinDuration) {
-          // Still spinning rapidly
-          reel.isSpinning = true;
-          
-          // Calculate deceleration in the last 400ms before stop
-          const timeUntilStop = spinDuration - elapsed;
-          if (timeUntilStop < 400) {
-            // Decelerate smoothly
-            const decelFactor = timeUntilStop / 400;
-            reel.velocity = this.SPIN_SPEED * decelFactor * 0.5 + this.MIN_SPEED;
-          } else {
-            // Full speed
-            reel.velocity = this.SPIN_SPEED;
-          }
-
-          reel.offset -= reel.velocity; // negative for upward motion
-
-          // Draw the scrolling strip for this column
-          this.drawReelColumn(col, reel);
-          stillSpinning = true;
-        } else if (elapsed < bounceStart + BOUNCE_DURATION) {
-          // Bounce phase
-          if (!bouncingReels.has(col)) {
-            bouncingReels.add(col);
-            reel.offset = 0; // reset offset for bounce calculation
-          }
-          
-          const bounceTime = elapsed - bounceStart;
-          const bounceProgress = bounceTime / BOUNCE_DURATION;
-          
-          // Ease-out bounce: overshoot then settle
-          const bounceOffset = this.BOUNCE_AMOUNT * Math.sin(bounceProgress * Math.PI);
-          
-          // Draw final icons with bounce offset
-          for (let row = 0; row < this.height; row++) {
-            const icon = finalGrid[row][col];
-            this.drawIcon(icon, col * this.cell, row * this.cell + bounceOffset);
-          }
-          stillSpinning = true;
-        } else if (reel.isSpinning || bouncingReels.has(col)) {
-          // Just finished - snap to final position
-          reel.isSpinning = false;
-          reel.offset = 0;
-          bouncingReels.delete(col);
-          
-          // Draw final icons
-          for (let row = 0; row < this.height; row++) {
-            const icon = finalGrid[row][col];
-            this.drawIcon(icon, col * this.cell, row * this.cell);
-          }
-        } else {
-          // Already completed - draw static
-          for (let row = 0; row < this.height; row++) {
-            const icon = finalGrid[row][col];
-            this.drawIcon(icon, col * this.cell, row * this.cell);
-          }
-        }
-      }
-
-      if (stillSpinning) {
-        this.animationFrameId = requestAnimationFrame(animationLoop);
-      } else {
-        this.animationFrameId = null;
-        onComplete();
-      }
-    };
-
-    this.animationFrameId = requestAnimationFrame(animationLoop);
+    return true;
   }
 
-  private drawReelColumn(col: number, reel: ReelState) {
-    const x = col * this.cell;
+  private handleReelSettled(column: number): void {
+    if (!this.manualSession) return;
+    const reel = this.manualSession.reels[column];
+    const strip = reel.strip;
+    const finalIndex = ((reel.position % strip.length) + strip.length) % strip.length;
+
+    reel.finalIndex = finalIndex;
+    reel.finalIcon = strip[finalIndex];
+    reel.state = 'stopped';
+    reel.velocity = 0;
+    reel.offsetPx = 0;
+
+    if (this.onReelSettled) {
+      this.onReelSettled(column);
+    }
+  }
+
+  private drawLoopingStrip(reel: ManualReelState, column: number): void {
+    const x = column * this.cell;
+    const stripHeightPx = reel.strip.length * this.cell;
+    const offset = ((reel.offsetPx % stripHeightPx) + stripHeightPx) % stripHeightPx;
     const totalHeight = this.height * this.cell;
-    
-    // Calculate which icons from the strip are visible
-    const stripCellHeight = this.cell;
-    const loopedOffset = reel.offset % (reel.currentIcons.length * stripCellHeight);
-    
-    // Draw multiple copies to create seamless loop
+
     for (let pass = -1; pass <= 1; pass++) {
-      const baseY = pass * reel.currentIcons.length * stripCellHeight - loopedOffset;
-      
-      for (let i = 0; i < reel.currentIcons.length; i++) {
-        const y = baseY + i * stripCellHeight;
-        
-        // Only draw if visible in viewport
-        if (y + stripCellHeight >= 0 && y < totalHeight) {
-          this.drawIcon(reel.currentIcons[i], x, y);
-        }
+      const baseY = pass * stripHeightPx - offset;
+      for (let i = 0; i < reel.strip.length; i++) {
+        const y = baseY + i * this.cell;
+        if (y + this.cell < 0 || y > totalHeight) continue;
+        this.drawIcon(reel.strip[i], x, y);
       }
+    }
+
+    if (reel.previewIcon) {
+      this.drawIcon(reel.previewIcon, x, -this.cell * 0.4);
     }
   }
 
-  private drawIcon(id: IconId, x: number, y: number) {
+  private drawStoppedStrip(reel: ManualReelState, column: number): void {
+    const x = column * this.cell;
+    for (let row = 0; row < this.height; row++) {
+      const idx = (reel.position + row) % reel.strip.length;
+      this.drawIcon(reel.strip[idx], x, row * this.cell);
+    }
+  }
+
+  private drawIcon(id: IconId, x: number, y: number): void {
     const img = this.icons[id];
     if (img) {
       this.ctx.drawImage(img, x, y, this.cell, this.cell);
-    } else {
-      // Fallback color
-      const color = this.getFallbackColor(id);
-      this.ctx.fillStyle = color;
-      this.ctx.fillRect(x, y, this.cell, this.cell);
-      this.ctx.strokeStyle = "rgba(0,0,0,0.35)";
-      this.ctx.lineWidth = 2;
-      this.ctx.strokeRect(x + 1, y + 1, this.cell - 2, this.cell - 2);
+      return;
     }
+
+    // fallback for missing art
+    this.ctx.fillStyle = '#3b4253';
+    this.ctx.fillRect(x, y, this.cell, this.cell);
+    this.ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(x + 1, y + 1, this.cell - 2, this.cell - 2);
   }
 
-  private getFallbackColor(id: IconId): string {
-    const colors: Partial<Record<IconId, string>> = {
-      lemon: "#f5d742",
-      grape: "#7d47b5",
-      melon: "#6bd16b",
-      cherry: "#ff4f5e",
-      diamond: "#6dd4ff",
-      bar: "#444957",
-      seven: "#ff334f",
-      bell: "#f7c948",
-      star: "#ffe74a",
-    };
-    return colors[id] ?? "#3b4253";
+  private cancelAnimation(): void {
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+    this.lastFrameTime = null;
   }
 
-  private setupCanvas() {
+  private setupCanvas(): void {
     const cssW = this.width * this.cell;
     const cssH = this.height * this.cell;
     const dpr = window.devicePixelRatio || 1;
-    
+
     this.canvas.width = Math.max(1, Math.floor(cssW * dpr));
     this.canvas.height = Math.max(1, Math.floor(cssH * dpr));
     this.canvas.style.width = `${cssW}px`;
     this.canvas.style.height = `${cssH}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.imageSmoothingEnabled = false;
+  }
+
+  private setupDPR(): void {
+    const dpr = window.devicePixelRatio || 1;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.imageSmoothingEnabled = false;
   }
 }
