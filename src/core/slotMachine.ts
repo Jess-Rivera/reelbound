@@ -14,7 +14,9 @@ import {
   CELL_SIZE,
   SPIN_SPEED,
   AUTO_STOP_DECEL_DISTANCE,
+  DECEL_DISTANCE,
   AUTO_STOP_MIN_SPEED,
+  MIN_SPEED,
 } from "../types/index";
 import { defaultPool as DEFAULT_ICON_POOL } from "../data/defaultPool";
 import { evaluateGrid } from "./winEvaluator";
@@ -311,6 +313,8 @@ export class SlotMachine {
   startManualSession(): ManualSpinSession {
     if (this.manualSession) throw new Error(`Manual session already active`);
 
+    this.advanceReels();
+
     const reels = this.buildManualReelStates();
     const now = performance.now();
     const session: ManualSpinSession = {
@@ -333,45 +337,44 @@ export class SlotMachine {
     if (!this.manualSession) return;
 
     const session = this.manualSession;
-    const speed = this.MANUAL_SPIN_ROWS_PER_MS;
-    const cellHeight = CELL_SIZE;
-
-    session.reels.forEach((reelState) => {
-      if (reelState.state !== 'spinning') return;
-
-      reelState.offsetPx =
-        (reelState.offsetPx + speed * elapsedMs) %
-        (reelState.strip.length * cellHeight);
-      const steps = Math.floor(reelState.offsetPx / cellHeight);
-      if (steps > 0) {
-        reelState.position =
-          (reelState.position + steps) % reelState.strip.length;
-        reelState.offsetPx -= steps * cellHeight;
-
-        const nextIndex = (reelState.position + 1) % reelState.strip.length;
-        reelState.previewIcon = reelState.strip[nextIndex];
-      }
-    });
-
     session.timeRemaining = Math.max(0, session.deadline - performance.now());
+    
+    console.log('[UPDATE] Time remaining:', session.timeRemaining, 'Timed out:', session.timedOut);
+    
     if (session.timeRemaining === 0 && !session.timedOut) {
+      console.log('[UPDATE] Forcing timeout stop');
       this.forceTimeoutStop();
     }
   }
 
-  requestStopNextReel(): ManualReelState | null {
+  requestStopNextReel(): { reel: ManualReelState; column: number } | null {
     if (!this.manualSession) return null;
 
     const session = this.manualSession;
-    const reelState = session.reels[this.activeReelIndex];
-    if (!reelState || reelState.state !== 'spinning') return null;
 
+    const startIndex = this.activeReelIndex;
+    let targetIndex: number | null = null;
+
+    for (let offset = 0; offset < session.reels.length; offset++) {
+      const idx = (startIndex + offset) % session.reels.length;
+      if (session.reels[idx].state === 'spinning') {
+        targetIndex = idx;
+        break;
+      }
+    }
+
+    if (targetIndex === null) return null;
+
+    this.activeReelIndex = targetIndex;
+    session.activeReelIndex = targetIndex;
+
+    const reelState = session.reels[targetIndex];
     reelState.state = 'stopping';
     reelState.stopRequestedAt = performance.now();
     reelState.stopProfile = `manual`;
     session.status = 'stopping';
 
-    return reelState;
+    return { reel: reelState, column: targetIndex };
   }
 
   confirmReelStopped(col: number): void {
@@ -379,22 +382,25 @@ export class SlotMachine {
 
     const session = this.manualSession;
     const reel = session.reels[col];
-    if (!reel || reel.state === 'stopped') return;
+    if (!reel) return;
+    
+    // Only update the reel state if it's not already stopped
+    if (reel.state !== 'stopped') {
+      // Trust the animation's final position - it's what the player sees
+      if (reel.finalIndex !== undefined) {
+        this.reelPositions[col] = reel.finalIndex;  // Animation is truth
+      }
+      
+      reel.state = 'stopped';
+      reel.offsetPx = 0;
 
-    const strip = reel.strip;
-    const finalIndex = ((reel.position % strip.length) + strip.length) % strip.length;
-    reel.finalIndex = finalIndex;
-    reel.finalIcon = strip[finalIndex];
-    reel.state = 'stopped';
-    reel.offsetPx = 0;
+      this.activeReelIndex = Math.min(this.activeReelIndex + 1, this.width - 1);
+      session.activeReelIndex = this.activeReelIndex;
+    }
 
-    this.reelPositions[col] = finalIndex;
-
-    this.activeReelIndex = Math.min(this.activeReelIndex + 1, this.width - 1);
-    session.activeReelIndex = this.activeReelIndex;
-
+    // ALWAYS check if all reels are done
     if (session.reels.every((r) => r.state === 'stopped')) {
-      const grid = this.buildGrid();
+      const grid = this.buildGrid();  // Build from the CURRENT reelPositions
       const evaluation = evaluateGrid(grid, this.runtime);
       session.spinResult = { grid, ...evaluation };
       session.status = session.timedOut ? 'timed_out' : 'stopped';
@@ -431,7 +437,9 @@ export class SlotMachine {
     session.timeRemaining = 0;
 
     session.reels.forEach((reel) => {
-      if (reel.state === 'stopped') return;
+      if (reel.state !== 'spinning') return;
+      console.log(`[TimeoutStop] Reel forced stop`);
+
       reel.state = 'stopping';
       reel.stopProfile = `forced`;
       reel.decelDistance = AUTO_STOP_DECEL_DISTANCE;

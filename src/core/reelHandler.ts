@@ -103,10 +103,19 @@ export class ReelHandler implements ReelView {
     this.animationFrameId = requestAnimationFrame(this.manualLoop);
   }
 
-  markReelStopping(session: ManualSpinSession): void {
+  markReelStopping(
+    session: ManualSpinSession,
+    column: number | null = null
+  ): void {
     // Keep reference updated in case caller mutated a cloned session object.
     if (this.manualSession !== session) {
       this.manualSession = session;
+    }
+    if (column !== null && this.manualSession) {
+      const reel = this.manualSession.reels[column];
+      if (reel && reel.state === 'stopping') {
+        reel.stopRequestedAt = performance.now();
+      }
     }
     if (this.animationFrameId === null) {
       this.lastFrameTime = null;
@@ -169,16 +178,20 @@ export class ReelHandler implements ReelView {
 
   private advanceSpinningReel(reel: ManualReelState, deltaFrames: number): void {
     const stripHeightPx = reel.strip.length * this.cell;
-    reel.offsetPx = (reel.offsetPx + reel.velocity * deltaFrames) % stripHeightPx;
+    
+    // Increase offset to scroll icons downward
+    reel.offsetPx += reel.velocity * deltaFrames;
 
-    const steps = Math.floor(reel.offsetPx / this.cell);
-    if (steps > 0) {
-      reel.position = (reel.position + steps) % reel.strip.length;
-      reel.offsetPx -= steps * this.cell;
-
-      const nextIndex = (reel.position + 1) % reel.strip.length;
-      reel.previewIcon = reel.strip[nextIndex];
+    // When we've scrolled past a full cell
+    while (reel.offsetPx >= this.cell) {
+      reel.offsetPx -= this.cell;
+      // Position advances FORWARD as icons scroll down
+      reel.position = (reel.position - 1) % reel.strip.length;
     }
+    
+    // Preview is the next icon in the strip
+    const nextIndex = (reel.position + 1) % reel.strip.length;
+    reel.previewIcon = reel.strip[nextIndex];
   }
 
   private advanceStoppingReel(
@@ -208,39 +221,38 @@ export class ReelHandler implements ReelView {
   }
 
   private handleReelSettled(column: number): void {
-    if (!this.manualSession) return;
-    const reel = this.manualSession.reels[column];
-    const strip = reel.strip;
-    const finalIndex = ((reel.position % strip.length) + strip.length) % strip.length;
+  if (!this.manualSession) return;
+  const reel = this.manualSession.reels[column];
+  const strip = reel.strip;
+  
+  // What the player SEES at the top row is the truth
+  const finalIndex = ((reel.position % strip.length) + strip.length) % strip.length;
 
-    reel.finalIndex = finalIndex;
-    reel.finalIcon = strip[finalIndex];
-    reel.state = 'stopped';
-    reel.velocity = 0;
-    reel.offsetPx = 0;
+  reel.finalIndex = finalIndex;
+  reel.finalIcon = strip[finalIndex];
+  reel.position = finalIndex;
+  reel.velocity = 0;
+  reel.offsetPx = 0;
 
-    if (this.onReelSettled) {
-      this.onReelSettled(column);
-    }
+  if (this.onReelSettled) {
+    this.onReelSettled(column);  // Tells SlotMachine what actually stopped
   }
+}
 
   private drawLoopingStrip(reel: ManualReelState, column: number): void {
     const x = column * this.cell;
     const stripHeightPx = reel.strip.length * this.cell;
-    const offset = ((reel.offsetPx % stripHeightPx) + stripHeightPx) % stripHeightPx;
     const totalHeight = this.height * this.cell;
 
+    // Draw enough passes to cover the visible area plus buffer
     for (let pass = -1; pass <= 1; pass++) {
-      const baseY = pass * stripHeightPx - offset;
+      const baseY = pass * stripHeightPx + reel.offsetPx;  // Back to subtract
       for (let i = 0; i < reel.strip.length; i++) {
+        const stripIndex = (reel.position + i) % reel.strip.length;  // ⚠️ Use position + i
         const y = baseY + i * this.cell;
         if (y + this.cell < 0 || y > totalHeight) continue;
-        this.drawIcon(reel.strip[i], x, y);
+        this.drawIcon(reel.strip[stripIndex], x, y);
       }
-    }
-
-    if (reel.previewIcon) {
-      this.drawIcon(reel.previewIcon, x, -this.cell * 0.4);
     }
   }
 

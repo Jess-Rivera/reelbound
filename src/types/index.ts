@@ -20,10 +20,10 @@ export const ICONS = [
   'star'
 ] as const;
 export const CELL_SIZE = 96;
-export const SPIN_SPEED = 25;
-export const DECEL_DISTANCE = 480;
-export const AUTO_STOP_DECEL_DISTANCE = 240;
-export const MIN_SPEED = 2;
+export const SPIN_SPEED = 15;
+export const DECEL_DISTANCE = 192;
+export const AUTO_STOP_DECEL_DISTANCE = 96;
+export const MIN_SPEED = 3;
 export const AUTO_STOP_MIN_SPEED = 8;
 export const BOUNCE_AMOUNT = 12;
 

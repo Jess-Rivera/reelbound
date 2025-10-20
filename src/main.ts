@@ -233,20 +233,18 @@ async function bootstrap() {
     showRoundChoice();
   }
 
-  function handleReelSettled(column: number) {
-    if (!manualSession) return;
+    function handleReelSettled(column: number) {
+      if (!manualSession) return;
 
-    slotMachine.confirmReelStopped(column);
-    const session = manualSession;
-    const allStopped = session.reels.every((reel) => reel.state === `stopped`);
+      slotMachine.confirmReelStopped(column);
+      const session = manualSession;
+      const allStopped = session.reels.every((reel) => reel.state === `stopped`);
 
-    if (allStopped) {
-      finalizeManualSpin();
-    } else if (!session.timedOut) {
-      stopButtonLocked = false;
-      stopButtonEl.disabled = false;
+      if (allStopped) {
+        finalizeManualSpin();
+      }
+      // Remove the unlock logic here - it's now in the button handler
     }
-  }
 
   function finalizeManualSpin() {
     if (!manualSession) return;
@@ -489,31 +487,51 @@ async function bootstrap() {
 
     reel.beginManualAnimation(manualSession, handleReelSettled);
     startManualTimer(manualSession);
-    /*
-    const { spin, state } = roundManager.spin(); 
-    
-    // Get reel strips for animation
-    const reelStrips = slotMachine.getAllReelStrips();
-    
-    // Animate with actual reel strips
-    await reel.animateWithReels(spin.grid, reelStrips);*/
-    
+
     // Update inspector to show new positions
     updateInspector();
-    spinButtonEl.disabled = !roundManager.canSpin();
 
     // Manual spins finalize asynchronously; logging occurs in finalizeManualSpin once all reels stop.
   });
 
-  stopButtonEl.addEventListener('click', async () => {
-    if (!manualSession || stopButtonLocked) return;
+stopButtonEl.addEventListener('click', async () => {
+  console.log('[STOP] Button clicked');
+  console.log('[STOP] stopButtonLocked:', stopButtonLocked);
+  console.log('[STOP] manualSession exists:', !!manualSession);
+  
+  if (!manualSession || stopButtonLocked) {
+    console.log('[STOP] Blocked - locked or no session');
+    return;
+  }
 
+  const result = slotMachine.requestStopNextReel();
+  console.log('[STOP] requestStopNextReel result:', result);
+  
+  if (!result) {
+    console.log('[STOP] No result - no reels to stop');
+    return;
+  }
+  
+  console.log('[STOP] Stopping column:', result.column);
+  reel.markReelStopping(manualSession, result.column);
+  
+  // Count reels still spinning AFTER this stop request
+  const stillSpinning = manualSession.reels.filter(r => r.state === 'spinning');
+  console.log('[STOP] Reels still spinning:', stillSpinning.length);
+  console.log('[STOP] All reel states:', manualSession.reels.map(r => r.state));
+  
+  if (stillSpinning.length > 0) {
+    console.log('[STOP] Re-enabling button for next reel');
+    stopButtonLocked = false;
+    stopButtonEl.disabled = false;
+  } else {
+    console.log('[STOP] All reels stopping - locking button');
     stopButtonLocked = true;
-    slotMachine.requestStopNextReel();
-    reel.markReelStopping(manualSession);
-    updateManualTimer(manualSession);
-    
-  });
+    stopButtonEl.disabled = true;
+  }
+  
+  updateManualTimer(manualSession);
+});
 
   showRoundChoice();
 }
