@@ -140,40 +140,6 @@ Final score = sum of all chain scores.
 		-e.g. a player can take 5 cherries + 5 lemons -> 5 strawberries that have a 1.3 base multiple.
 
 
-## Psuedo-Code
-- Nouns
-	- Machine
-	- fight
-	- round
-	- spin
-	- item
-	- icon
-	- Win Pattern
-	- Enemy
-	- Map
-	- Node
-	- Shop
-	- Heat Tier
-	- Heat gain
-	- Tickets
-	- Contracts
-	- Difficulty
-	- Map Path
-	- Floor
-	- Helper Family
-	- Rewrite event
-	- Shop Actions
-	- Fight Result
-	- Round Result
-	- Spin Outcome Log
-	- Save/Load Run Progress
-	- Traits
-	- Run state
-	- Run Phase
-	- Encounter
-	- Persistence Version
-	
-
 	| Machine tier           | Example machine   | Grid / patterns                             | Suggested `heatNormalization` |
 | ---------------------- | ----------------- | ------------------------------------------- | ----------------------------- |
 | **Baseline**           | Classic Cassie    | 3×3, H3/V3/D3 only                          | **400–600**                   |
