@@ -1,0 +1,189 @@
+[
+
+  {
+    "id": "line-horizontal-3",
+    "name": "Horizontal Run 3",
+    "kind": "line",
+    "family": "horizontal",
+    "multiplier": 1.0,
+    "offsets": [{ "dx": 1, "dy": 0 }],
+    "length": 3
+  },
+  {
+    "id": "line-horizontal-4",
+    "name": "Horizontal Run 4",
+    "kind": "line",
+    "family": "horizontal",
+    "multiplier": 1.15,
+    "offsets": [{ "dx": 1, "dy": 0 }],
+    "length": 4
+  },
+  {
+    "id": "line-horizontal-5",
+    "name": "Horizontal Run 5",
+    "kind": "line",
+    "family": "horizontal",
+    "multiplier": 1.35,
+    "offsets": [{ "dx": 1, "dy": 0 }],
+    "length": 5
+  },
+  {
+    "id": "line-horizontal-6",
+    "name": "Horizontal Run 6",
+    "kind": "line",
+    "family": "horizontal",
+    "multiplier": 1.6,
+    "offsets": [{ "dx": 1, "dy": 0 }],
+    "length": 6
+  },
+  {
+    "id": "line-horizontal-7",
+    "name": "Horizontal Run 7",
+    "kind": "line",
+    "family": "horizontal",
+    "multiplier": 1.9,
+    "offsets": [{ "dx": 1, "dy": 0 }],
+    "length": 7
+  },
+  {
+    "id": "line-vertical-3",
+    "name": "Vertical Run 3",
+    "kind": "line",
+    "family": "vertical",
+    "multiplier": 1.0,
+    "offsets": [{ "dx": 0, "dy": 1 }],
+    "length": 3
+  },
+  {
+    "id": "line-vertical-4",
+    "name": "Vertical Run 4",
+    "kind": "line",
+    "family": "vertical",
+    "multiplier": 1.15,
+    "offsets": [{ "dx": 0, "dy": 1 }],
+    "length": 4
+  },
+  {
+    "id": "line-vertical-5",
+    "name": "Vertical Run 5",
+    "kind": "line",
+    "family": "vertical",
+    "multiplier": 1.35,
+    "offsets": [{ "dx": 0, "dy": 1 }],
+    "length": 5
+  },
+  {
+    "id": "line-vertical-6",
+    "name": "Vertical Run 6",
+    "kind": "line",
+    "family": "vertical",
+    "multiplier": 1.6,
+    "offsets": [{ "dx": 0, "dy": 1 }],
+    "length": 6
+  },
+  {
+    "id": "line-vertical-7",
+    "name": "Vertical Run 7",
+    "kind": "line",
+    "family": "vertical",
+    "multiplier": 1.9,
+    "offsets": [{ "dx": 0, "dy": 1 }],
+    "length": 7
+  },
+  {
+    "id": "line-diagonal-main-3",
+    "name": "Diagonal Run 3",
+    "kind": "line",
+    "family": "diagonal",
+    "multiplier": 1.1,
+    "offsets": [{ "dx": 1, "dy": 1 }],
+    "length": 3
+  },
+  {
+    "id": "line-diagonal-main-4",
+    "name": "Diagonal Run 4",
+    "kind": "line",
+    "family": "diagonal",
+    "multiplier": 1.3,
+    "offsets": [{ "dx": 1, "dy": 1 }],
+    "length": 4
+  },
+  {
+    "id": "line-diagonal-main-5",
+    "name": "Diagonal Run 5",
+    "kind": "line",
+    "family": "diagonal",
+    "multiplier": 1.5,
+    "offsets": [{ "dx": 1, "dy": 1 }],
+    "length": 5
+  },
+  {
+    "id": "line-diagonal-main-6",
+    "name": "Diagonal Run 6",
+    "kind": "line",
+    "family": "diagonal",
+    "multiplier": 1.8,
+    "offsets": [{ "dx": 1, "dy": 1 }],
+    "length": 6
+  },
+  {
+    "id": "line-diagonal-main-7",
+    "name": "Diagonal Run 7",
+    "kind": "line",
+    "family": "diagonal",
+    "multiplier": 2.1,
+    "offsets": [{ "dx": 1, "dy": 1 }],
+    "length": 7
+  },
+  {
+    "id": "shape-corners-flex",
+    "name": "Corners (flex)",
+    "kind": "custom",
+    "family": "corner",
+    "multiplier": 1.4,
+    "shapeId": "corners-full-frame",
+    "constraints": { "minSize": 3, "maxSize": 7 }
+  },
+  {
+    "id": "shape-cross-3x3",
+    "name": "3x3 Cross",
+    "kind": "mask",
+    "family": "plus",
+    "multiplier": 1.6,
+    "mask": [
+      [0, 1, 0],
+      [1, 1, 1],
+      [0, 1, 0]
+    ]
+  },
+  {
+    "id": "shape-hollow-square-3x3",
+    "name": "3x3 Hollow Square",
+    "kind": "mask",
+    "family": "square",
+    "multiplier": 1.5,
+    "mask": [
+      [1, 1, 1],
+      [1, 0, 1],
+      [1, 1, 1]
+    ]
+  },
+  {
+    "id": "shape-chevron-flex-up",
+    "name": "Chevron Up (flex)",
+    "kind": "custom",
+    "family": "chevron",
+    "multiplier": 1.8,
+    "shapeId": "chevron-fullwidth-up",
+    "constraints": { "minSize": 5, "maxSize": 7 }
+  },
+  {
+    "id": "shape-chevron-flex-down",
+    "name": "Chevron Down (flex)",
+    "kind": "custom",
+    "family": "chevron",
+    "multiplier": 1.8,
+    "shapeId": "chevron-fullwidth-down",
+    "constraints": { "minSize": 5, "maxSize": 7 }
+   }
+]
