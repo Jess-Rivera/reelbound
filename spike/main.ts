@@ -85,6 +85,7 @@ Print Console messages
 
 /*-------------------------------------------------------
 Build Default Machine, Replace with Main Menu Later
+Validates selectableMachines.json is good
 --------------------------------------------------------*/
     const machineCandidates = machineConfigData as unknown;
     if (!Array.isArray(machineCandidates)) {
@@ -131,6 +132,7 @@ Build Default Machine, Replace with Main Menu Later
 
 
 }
+
 
 
 /*-------------------------------------------------Call-Bootstrap----------------------------------------------------*/
