@@ -196,111 +196,247 @@ export interface MachineSpec {
     themeColor?: string;
 }
 
-export function isMachineConfig(mach: unknown, validPatternIds?: Set<PatternId>): mach is MachineSpec {
-    if (!isRecord(mach)) return false;
+export type MachineConfigValidationResult =
+  | { ok: true; value: MachineSpec }
+  | { ok: false; error: string };
 
-    const m = mach as Record<string, unknown>;
-    const ICON_SET = new Set<IconId>(ICONS);
+export function validateMachineConfig(
+  mach: unknown,
+  validPatternIds?: Set<PatternId>
+): MachineConfigValidationResult {
+  if (!isRecord(mach)) {
+    return { ok: false, error: 'Machine config must be an object' };
+  }
 
-    if (typeof m.id !== 'string'  || typeof m.name !== 'string') return false; // check id and name
-    if (!isPositiveInteger(m.gridWidth) || !isPositiveInteger(m.gridHeight)) return false; //check that height and width are >= 1
-    if (!isPositiveInteger(m.reelLength) || m.reelLength < m.gridHeight) return false; // check that reel length is >= 1 and is at least as large as grid Height
-    if (typeof m.inheritDefaults !== 'boolean') return false; //inherit defaults is a boolean
-    if (!isFiniteNonNegativeNumber(m.warmUpThreshold)) return false; // check that warmup Threshold is a zero or positive value
-    if (!isFinitePositiveNumber(m.onFireThreshold) || m.onFireThreshold <= m.warmUpThreshold) return false; // verify that On Fire is positive AND larger than Warmed Up
-    if (!isFinitePositiveNumber(m.baseHeatScalar)) return false;
-    if (!isFinitePositiveNumber(m.heatNormalizer)) return false;
-    
-    if (
-        !Array.isArray(m.patternIds) ||
-        m.patternIds.some((id) => {
-            if (typeof id !== 'string') return true;
-            if (validPatternIds && validPatternIds.size > 0) {
-                return !validPatternIds.has(id as PatternId);
-            }
-            return false;
-        })
-    ) {
-        return false;
-    }
+  const m = mach as Record<string, unknown>;
+  const ICON_SET = new Set<IconId>(ICONS);
 
-    if ('exclude' in m) {
-        if (
-            !Array.isArray(m.exclude) ||
-            m.exclude.some((id) => typeof id !== 'string' || !ICON_SET.has(id as IconId))
-        ) {
-            return false;
-        }
-    }
+  if (typeof m.id !== 'string') {
+    return { ok: false, error: 'Machine config must include a string id' };
+  }
 
+  const machineId = m.id;
 
-
-    const validateIconMap = (value: unknown): value is Record<IconId, number> =>
-        isRecord(value) && Object.keys(value).every((key) => ICON_SET.has(key as IconId) && isFiniteNumber(value[key]));
-
-    if (m.poolAdjustments) {
-        if (!isRecord(m.poolAdjustments)) return false;
-        const { overrides, deltas } = m.poolAdjustments;
-        if (overrides && !validateIconMap(overrides)) return false;
-        if (deltas && !validateIconMap(deltas)) return false;
-    }
-
-    const validateModifier = (mod: unknown): mod is Modifier => {
-        if (!isRecord(mod) || typeof mod.type !== 'string') return false;
-
-        switch (mod.type) {
-            case 'iconBaseDelta':
-            case 'iconWeightDelta':
-            case 'iconWeightPercentageDelta': {
-                if (!isRecord(mod.target)) return false;
-                const { iconId, tag } = mod.target as Record<string, unknown>;
-                if (!iconId && !tag) return false;
-                if (iconId && !ICON_SET.has(iconId as IconId)) return false;
-                const valueKey = mod.type === 'iconWeightPercentageDelta' ? 'ppDelta' : 'delta';
-                return isFiniteNumber(mod[valueKey]);
-            }
-            case 'patternMultiplier': {
-                const { patternId, family } = (mod.target ?? {}) as Record<string, unknown>;
-                if (!patternId && !family) return false;
-                if (patternId) {
-                    if (typeof patternId !== 'string') return false;
-                    if (validPatternIds && validPatternIds.size > 0 && !validPatternIds.has(patternId as PatternId)) {
-                        return false;
-                    }
-                }
-                if (family && typeof family !== 'string') return false;
-                return isFiniteNumber(mod.newMult);
-            }
-            case 'basePayoutPercentage':
-            return isFinitePositiveNumber(mod.flat);
-            case 'heatGainScale':
-            return isFinitePositiveNumber(mod.scale);
-            default:
-            return false;
-        }
+  if (typeof m.name !== 'string') {
+    return { ok: false, error: `Machine ${machineId}: name must be a string` };
+  }
+  if (!isPositiveInteger(m.gridWidth)) {
+    return { ok: false, error: `Machine ${machineId}: gridWidth must be a positive integer` };
+  }
+  if (!isPositiveInteger(m.gridHeight)) {
+    return { ok: false, error: `Machine ${machineId}: gridHeight must be a positive integer` };
+  }
+  if (!isPositiveInteger(m.reelLength) || (typeof m.gridHeight === 'number' && m.reelLength < m.gridHeight)) {
+    return {
+      ok: false,
+      error: `Machine ${machineId}: reelLength must be a positive integer at least as large as gridHeight`
     };
+  }
+  if (typeof m.inheritDefaults !== 'boolean') {
+    return { ok: false, error: `Machine ${machineId}: inheritDefaults must be a boolean` };
+  }
+  if (!isFiniteNonNegativeNumber(m.warmUpThreshold)) {
+    return { ok: false, error: `Machine ${machineId}: warmUpThreshold must be a non-negative number` };
+  }
+  if (!isFinitePositiveNumber(m.onFireThreshold)) {
+    return { ok: false, error: `Machine ${machineId}: onFireThreshold must be a positive number` };
+  }
+  if (Number(m.onFireThreshold) <= Number(m.warmUpThreshold)) {
+    return {
+      ok: false,
+      error: `Machine ${machineId}: onFireThreshold must be greater than warmUpThreshold`
+    };
+  }
+  if (!isFinitePositiveNumber(m.baseHeatScalar)) {
+    return { ok: false, error: `Machine ${machineId}: baseHeatScalar must be a positive number` };
+  }
+  if (!isFinitePositiveNumber(m.heatNormalizer)) {
+    return { ok: false, error: `Machine ${machineId}: heatNormalizer must be a positive number` };
+  }
 
-    const validateModifierArray = (value: unknown) =>
-    Array.isArray(value) && value.every((entry) => validateModifier(entry));
+  if (!Array.isArray(m.patternIds)) {
+    return { ok: false, error: `Machine ${machineId}: patternIds must be an array` };
+  }
+  for (let i = 0; i < m.patternIds.length; i++) {
+    const patternId = m.patternIds[i];
+    if (typeof patternId !== 'string') {
+      return {
+        ok: false,
+        error: `Machine ${machineId}: patternIds[${i}] must be a string`
+      };
+    }
+    if (validPatternIds && validPatternIds.size > 0 && !validPatternIds.has(patternId as PatternId)) {
+      return {
+        ok: false,
+        error: `Machine ${machineId}: patternIds[${i}] "${patternId}" is not defined in the pattern table`
+      };
+    }
+  }
 
-    if (
-        !validateModifierArray(m.warmedUpBonus) ||
-        !validateModifierArray(m.onFireBonus) ||
-        !validateModifierArray(m.burningUpBonus) ||
-        !validateModifierArray(m.burningUpPenalty) ||
-        !validateModifierArray(m.breakdownBonus) ||
-        !validateModifierArray(m.breakdownPenalty)
-    ) return false;
+  if ('exclude' in m) {
+    if (!Array.isArray(m.exclude)) {
+      return { ok: false, error: `Machine ${machineId}: exclude must be an array` };
+    }
+    for (let i = 0; i < m.exclude.length; i++) {
+      const icon = m.exclude[i];
+      if (typeof icon !== 'string' || !ICON_SET.has(icon as IconId)) {
+        return {
+          ok: false,
+          error: `Machine ${machineId}: exclude[${i}] "${String(icon)}" is not a recognised icon id`
+        };
+      }
+    }
+  }
 
-    const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
-    if (m.themeColor !== undefined) {
-        if (typeof m.themeColor !== 'string' || !HEX_COLOR_RE.test(m.themeColor)) {
-            return false;
-        }
+  const describeIconMap = (value: unknown, label: string): string | null => {
+    if (!isRecord(value)) {
+      return `${label} must be an object whose keys are icon ids and values are numbers`;
+    }
+    for (const key of Object.keys(value)) {
+      if (!ICON_SET.has(key as IconId)) {
+        return `${label} uses unknown icon id "${key}"`;
+      }
+      if (!isFiniteNumber(value[key])) {
+        return `${label} entry for "${key}" must be a finite number`;
+      }
+    }
+    return null;
+  };
+
+  if (m.poolAdjustments !== undefined) {
+    if (!isRecord(m.poolAdjustments)) {
+      return { ok: false, error: `Machine ${machineId}: poolAdjustments must be an object` };
+    }
+    const pa = m.poolAdjustments as Record<string, unknown>;
+    if (pa.overrides !== undefined) {
+      const error = describeIconMap(pa.overrides, 'poolAdjustments.overrides');
+      if (error) {
+        return { ok: false, error: `Machine ${machineId}: ${error}` };
+      }
+    }
+    if (pa.deltas !== undefined) {
+      const error = describeIconMap(pa.deltas, 'poolAdjustments.deltas');
+      if (error) {
+        return { ok: false, error: `Machine ${machineId}: ${error}` };
+      }
+    }
+  }
+
+  const validateModifier = (mod: unknown, path: string): string | null => {
+    if (!isRecord(mod) || typeof mod.type !== 'string') {
+      return `${path} must be an object with a string "type"`;
     }
 
-    
-  return true;
+    switch (mod.type) {
+      case 'iconBaseDelta':
+      case 'iconWeightDelta':
+      case 'iconWeightPercentageDelta': {
+        if (!isRecord(mod.target)) {
+          return `${path}: target must be an object with iconId and/or tag`;
+        }
+        const target = mod.target as Record<string, unknown>;
+        const { iconId, tag } = target;
+        if (!iconId && !tag) {
+          return `${path}: target must include iconId or tag`;
+        }
+        if (iconId) {
+          if (typeof iconId !== 'string' || !ICON_SET.has(iconId as IconId)) {
+            return `${path}: target.iconId "${String(iconId)}" is not recognised`;
+          }
+        }
+        const valueKey = mod.type === 'iconWeightPercentageDelta' ? 'ppDelta' : 'delta';
+        if (!isFiniteNumber((mod as Record<string, unknown>)[valueKey])) {
+          return `${path}: ${valueKey} must be a finite number`;
+        }
+        return null;
+      }
+      case 'patternMultiplier': {
+        const target = (mod.target ?? {}) as Record<string, unknown>;
+        const { patternId, family } = target;
+        if (!patternId && !family) {
+          return `${path}: target must include patternId or family`;
+        }
+        if (patternId !== undefined) {
+          if (typeof patternId !== 'string') {
+            return `${path}: target.patternId must be a string`;
+          }
+          if (validPatternIds && validPatternIds.size > 0 && !validPatternIds.has(patternId as PatternId)) {
+            return `${path}: patternId "${patternId}" is not defined in the pattern table`;
+          }
+        }
+        if (family !== undefined && typeof family !== 'string') {
+          return `${path}: target.family must be a string`;
+        }
+        if (!isFiniteNumber((mod as Record<string, unknown>).newMult)) {
+          return `${path}: newMult must be a finite number`;
+        }
+        return null;
+      }
+      case 'basePayoutPercentage': {
+        if (!isFinitePositiveNumber((mod as Record<string, unknown>).flat)) {
+          return `${path}: flat must be a positive number`;
+        }
+        return null;
+      }
+      case 'heatGainScale': {
+        if (!isFinitePositiveNumber((mod as Record<string, unknown>).scale)) {
+          return `${path}: scale must be a positive number`;
+        }
+        if (
+          (mod as Record<string, unknown>).family !== undefined &&
+          typeof (mod as Record<string, unknown>).family !== 'string'
+        ) {
+          return `${path}: family must be a string if provided`;
+        }
+        return null;
+      }
+      default:
+        return `${path}: unsupported modifier type "${mod.type}"`;
+    }
+  };
+
+  const requireModifierArray = (value: unknown, label: string): string | null => {
+    if (!Array.isArray(value)) {
+      return `${label} must be an array`;
+    }
+    for (let i = 0; i < value.length; i++) {
+      const error = validateModifier(value[i], `${label}[${i}]`);
+      if (error) {
+        return error;
+      }
+    }
+    return null;
+  };
+
+  const modifierArrays: Array<[unknown, string]> = [
+    [m.warmedUpBonus, 'warmedUpBonus'],
+    [m.onFireBonus, 'onFireBonus'],
+    [m.burningUpBonus, 'burningUpBonus'],
+    [m.burningUpPenalty, 'burningUpPenalty'],
+    [m.breakdownBonus, 'breakdownBonus'],
+    [m.breakdownPenalty, 'breakdownPenalty']
+  ];
+
+  for (const [value, label] of modifierArrays) {
+    const error = requireModifierArray(value, label);
+    if (error) {
+      return { ok: false, error: `Machine ${machineId}: ${error}` };
+    }
+  }
+
+  const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+  if (m.themeColor !== undefined) {
+    if (typeof m.themeColor !== 'string' || !HEX_COLOR_RE.test(m.themeColor)) {
+      return { ok: false, error: `Machine ${machineId}: themeColor must be a valid hex color string` };
+    }
+  }
+
+  const typedMachine = m as unknown as MachineSpec;
+  return { ok: true, value: typedMachine };
+}
+
+export function isMachineConfig(mach: unknown, validPatternIds?: Set<PatternId>): mach is MachineSpec {
+  return validateMachineConfig(mach, validPatternIds).ok;
 }
 
 export interface MachineFinal {

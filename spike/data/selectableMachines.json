@@ -1,0 +1,53 @@
+[
+    {
+        "id": "classic_cassie",
+        "name": "Classic Cassie",
+        "gridWidth": 3,
+        "gridHeight": 3,
+        "reelLength": 34,
+        "inheritDefaults": true,
+        "poolAdjustments": {
+            "deltas": {"lemon": 5}
+        },
+        "warmUpThreshold": 33,
+        "warmedUpBonus": [],
+        "onFireThreshold": 66,
+        "onFireBonus": [],
+        "burningUpBonus": [],
+        "burningUpPenalty": [],
+        "breakdownBonus": [],
+        "breakdownPenalty": [],
+        "baseHeatScalar": 3,
+        "heatNormalizer": 400,
+        "patternIds": [
+            "line-horizontal-3",
+            "line-vertical-3",
+            "line-diagonal-main-3"
+        ]
+    },
+    {
+        "id": "basic_brie",
+        "name": "Basic Brie",
+        "gridWidth": 4,
+        "gridHeight": 4,
+        "reelLength": 30,
+        "inheritDefaults": true,
+        "warmUpThreshold": 10,
+        "warmedUpBonus": [],
+        "onFireThreshold": 80,
+        "onFireBonus": [],
+        "burningUpBonus": [],
+        "burningUpPenalty": [],
+        "breakdownBonus": [],
+        "breakdownPenalty": [],
+        "baseHeatScalar": 3,
+        "heatNormalizer": 400,
+        "patternIds": [
+            "line-horizontal-3",
+            "line-vertical-3",
+            "line-diagonal-main-3",
+            "shape-cross-3x3",
+            "shape-hollow-square-3x3"
+        ]
+    }
+]

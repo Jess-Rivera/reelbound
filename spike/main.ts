@@ -12,6 +12,7 @@ import {
   MachineSpec,
   HeatTier,
   PatternFamily,
+  PatternId,
   Modifier,
   Difficulty,
   RunState,
@@ -20,9 +21,10 @@ import {
   ScoringPattern,
   RNG,
   RNGSeed,
-  isMachineConfig
+  validateMachineConfig
 } from './contracts/MainTypes';
-import machinConfigData from './'
+import machineConfigData from './data/selectableMachines.json'
+import patterns from './data/patterns.json'
 
 
 
@@ -85,10 +87,46 @@ Print Console messages
 Build Default Machine, Replace with Main Menu Later
 --------------------------------------------------------*/
     const machineCandidates = machineConfigData as unknown;
-    if (!isMachineConfig(machineCandidates)) {
-        print(['Failed to validate machine config JSON.', JSON.stringify(machineCandidates, null, 2)]);
-        return
+    if (!Array.isArray(machineCandidates)) {
+        console.error('[Spike] Machine config JSON must be an array.');
+        return;
     }
+
+    const patternIds = new Set<PatternId>();
+    if (Array.isArray(patterns)) {
+        for (const entry of patterns) {
+            if (entry && typeof entry.id === 'string') {
+                patternIds.add(entry.id as PatternId);
+            }
+        }
+    }
+
+    const validMachines: MachineSpec[] = [];
+    const validationProblems: Array<{ index: number; error: string }> = [];
+
+    machineCandidates.forEach((candidate, index) => {
+        const result = validateMachineConfig(candidate, patternIds);
+        if (result.ok) {
+            validMachines.push(result.value);
+        } else {
+            validationProblems.push({ index, error: result.error });
+        }
+    });
+
+    if (validationProblems.length > 0) {
+        const detail = validationProblems
+            .map(({ index, error }) => `#${index}: ${error}`)
+            .join('\n');
+        throw new Error(`[Spike] Machine config errors:\n${detail}`);
+    }
+
+    if (validMachines.length === 0) {
+        console.error('[Spike] No valid machines available. Aborting bootstrap.');
+        return;
+    }
+
+    const selectedMachine = validMachines[0];
+    console.log('[Spike] Machines loaded properly. Selected default machine:', selectedMachine.id);
 
 
 
