@@ -1,30 +1,8 @@
 import {
-  Tickets,
-  Contracts,
-  ICONS,
-  IconId,
-  IconMetaData,
-  SpinState,
-  RoundMode,
-  RoundState,
-  RoundModePreset,
-  ROUND_MODE_PRESETS,
-  MachineSpec,
-  HeatTier,
-  PatternFamily,
-  PatternId,
-  Modifier,
-  Difficulty,
-  RunState,
-  ShopSpec,
-  ShopStockItem,
-  ScoringPattern,
   RNG,
-  RNGSeed,
-  validateMachineConfig
+  RNGSeed
 } from './contracts/MainTypes';
-import machineConfigData from './data/selectableMachines.json'
-import patterns from './data/patterns.json'
+import { loadMachineResources } from './core/machineLoader';
 
 
 
@@ -66,71 +44,38 @@ class SimpleRNG implements RNG {
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*-------------------------------------------------------------------------------------------------------------------*/
 
+/*-------------------------------------------------------
+bootstrap – wire up seed, load machines, and prep initial state.
+Example: bootstrap().catch(console.error);
+-------------------------------------------------------*/
 async function bootstrap() {
-/*-------------------------------------------------------
-Establishes the seed right away
---------------------------------------------------------*/
-    const params = new URLSearchParams(window.location.search);
-    const seedParam = params.get('seed') ?? params.get('rngSeed');
-    const rng = new SimpleRNG(seedParam ?? undefined);
+  /*-------------------------------------------------------
+  Establish seed from URL or clock.
+  -------------------------------------------------------*/
+  const params = new URLSearchParams(window.location.search);
+  const seedParam = params.get('seed') ?? params.get('rngSeed');
+  const rng = new SimpleRNG(seedParam ?? undefined);
 
-/*-------------------------------------------------------
-Set up canvases
-Print Console messages
---------------------------------------------------------*/
-    const debugPanel = document.querySelector<HTMLPreElement>('#debug');
-    const machineLabel = document.querySelector<HTMLSpanElement>('#machine-name');
+  /*-------------------------------------------------------
+  Wire debug hooks / DOM references.
+  -------------------------------------------------------*/
+  const debugPanel = document.querySelector<HTMLPreElement>('#debug');
+  const machineLabel = document.querySelector<HTMLSpanElement>('#machine-name');
 
-    console.log(`Setting Up Systems.`);
+  console.log('Setting Up Systems.');
 
-/*-------------------------------------------------------
-Build Default Machine, Replace with Main Menu Later
-Validates selectableMachines.json is good
---------------------------------------------------------*/
-    const machineCandidates = machineConfigData as unknown;
-    if (!Array.isArray(machineCandidates)) {
-        console.error('[Spike] Machine config JSON must be an array.');
-        return;
-    }
+  /*-------------------------------------------------------
+  Load machines & icon resources via loader.
+  -------------------------------------------------------*/
+  const { machines, iconMeta, baseIconWeights } = loadMachineResources();
+  if (machines.length === 0) {
+    throw new Error('[Spike] Machine loader produced zero machines.');
+  }
 
-    const patternIds = new Set<PatternId>();
-    if (Array.isArray(patterns)) {
-        for (const entry of patterns) {
-            if (entry && typeof entry.id === 'string') {
-                patternIds.add(entry.id as PatternId);
-            }
-        }
-    }
+  const selectedMachine = machines[0];
+  console.log('[Spike] Machines loaded properly. Selected default machine:', selectedMachine.spec.id);
 
-    const validMachines: MachineSpec[] = [];
-    const validationProblems: Array<{ index: number; error: string }> = [];
-
-    machineCandidates.forEach((candidate, index) => {
-        const result = validateMachineConfig(candidate, patternIds);
-        if (result.ok) {
-            validMachines.push(result.value);
-        } else {
-            validationProblems.push({ index, error: result.error });
-        }
-    });
-
-    if (validationProblems.length > 0) {
-        const detail = validationProblems
-            .map(({ index, error }) => `#${index}: ${error}`)
-            .join('\n');
-        throw new Error(`[Spike] Machine config errors:\n${detail}`);
-    }
-
-    if (validMachines.length === 0) {
-        console.error('[Spike] No valid machines available. Aborting bootstrap.');
-        return;
-    }
-
-    const selectedMachine = validMachines[0];
-    console.log('[Spike] Machines loaded properly. Selected default machine:', selectedMachine.id);
-
-
-
+  // TODO: Wire up menu / gameplay bootstrap using selectedMachine, iconMeta, baseIconWeights.
 }
 
 

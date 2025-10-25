@@ -1,0 +1,119 @@
+[
+    {
+        "id": "lemon",
+        "name": "Lemon",
+        "glyph": "LE",
+        "assetURL": "lemon.png",
+        "baseScore": 10,
+        "category": "fruit",
+        "rarity": "common",
+        "tags": [
+            "citrus"
+        ],
+        "defaultAmount": 19
+    },
+    {
+        "id": "grape",
+        "name": "Grape",
+        "glyph": "GR",
+        "assetURL": "grape.png",
+        "baseScore": 10,
+        "category": "fruit",
+        "rarity": "common",
+        "tags": [
+            "berry"
+        ],
+        "defaultAmount": 19
+    },
+    {
+        "id": "melon",
+        "name": "Melon",
+        "glyph": "ME",
+        "assetURL": "melon.png",
+        "baseScore": 12,
+        "category": "fruit",
+        "rarity": "common",
+        "tags": [
+            "melon"
+        ],
+        "defaultAmount": 19
+    },
+    {
+        "id": "cherry",
+        "name": "Cherry",
+        "glyph": "CH",
+        "assetURL": "cherry.png",
+        "baseScore": 10,
+        "category": "fruit",
+        "rarity": "common",
+        "tags": [
+            "berry"
+        ],
+        "defaultAmount": 19
+    },
+    {
+        "id": "diamond",
+        "name": "Diamond",
+        "glyph": "DI",
+        "assetURL": "diamond.png",
+        "baseScore": 25,
+        "category": "treasure",
+        "rarity": "rare",
+        "tags": [
+            "gem"
+        ],
+        "defaultAmount": 3
+    },
+    {
+        "id": "bar",
+        "name": "Bar",
+        "glyph": "BA",
+        "assetURL": "bar.png",
+        "baseScore": 15,
+        "category": "classic",
+        "rarity": "uncommon",
+        "tags": [
+            "classic"
+        ],
+        "defaultAmount": 4
+    },
+    {
+        "id": "seven",
+        "name": "Seven",
+        "glyph": "7",
+        "assetURL": "seven.png",
+        "baseScore": 30,
+        "category": "classic",
+        "rarity": "rare",
+        "tags": [
+            "lucky"
+        ],
+        "defaultAmount": 4
+    },
+    {
+        "id": "bell",
+        "name": "Bell",
+        "glyph": "BE",
+        "assetURL": "bell.png",
+        "baseScore": 18,
+        "category": "classic",
+        "rarity": "uncommon",
+        "tags": [
+            "classic"
+        ],
+        "defaultAmount": 10
+    },
+    {
+        "id": "star",
+        "name": "Star",
+        "glyph": "*",
+        "assetURL": "star.png",
+        "baseScore": 20,
+        "category": "treasure",
+        "rarity": "rare",
+        "tags": [
+            "wild"
+        ],
+        "defaultAmount": 3
+    }
+]

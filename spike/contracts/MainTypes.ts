@@ -40,7 +40,8 @@ export type IconMetaData = {
     category: string;
     rarity: string;
     tags: string[];
-    synergyGroup?: string[];  
+    synergyGroup?: string[];
+    defaultAmount?: number;  
 }
 export type IconMetaTable = Record<string, IconMetaData>;
 
