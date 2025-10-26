@@ -85,6 +85,7 @@ function buildIconCatalog(resolveAsset?: (relativePath: string) => string) {
       category: poolEntry.category,
       rarity: poolEntry.rarity,
       tags: poolEntry.tags,
+      defaultAmount: poolEntry.defaultAmount,
     };
   });
 
@@ -160,11 +161,21 @@ function mergeIconWeights(
   spec: MachineSpec,
   validIconIds: Set<IconId>
 ) {
-  const weights: Record<IconId, number> = { ...baseIconWeights };
+  const weights: Record<IconId, number> = {} as Record<IconId, number>;
   const errors: string[] = [];
+  const excludedIcons = new Set<IconId>(spec.exclude ?? []);
+
+  for (const iconId of validIconIds) {
+    weights[iconId] = spec.inheritDefaults ? baseIconWeights[iconId] ?? 0 : 0;
+  }
 
   const { poolAdjustments } = spec;
   if (!poolAdjustments) {
+    excludedIcons.forEach((iconId) => {
+      if (validIconIds.has(iconId)) {
+        weights[iconId] = 0;
+      }
+    });
     return { mergedWeights: weights, mergeErrors: errors };
   }
 
@@ -173,6 +184,10 @@ function mergeIconWeights(
       const iconId = icon as IconId;
       if (!validIconIds.has(iconId)) {
         errors.push(`poolAdjustments.overrides references unknown icon "${icon}"`);
+        return;
+      }
+      if (excludedIcons.has(iconId)) {
+        errors.push(`poolAdjustments.overrides references excluded icon "${icon}"`);
         return;
       }
       if (typeof value !== 'number' || value < 0) {
@@ -190,6 +205,10 @@ function mergeIconWeights(
         errors.push(`poolAdjustments.deltas references unknown icon "${icon}"`);
         return;
       }
+      if (excludedIcons.has(iconId)) {
+        errors.push(`poolAdjustments.deltas references excluded icon "${icon}"`);
+        return;
+      }
       if (typeof delta !== 'number') {
         errors.push(`poolAdjustments.deltas["${icon}"] must be a number`);
         return;
@@ -198,6 +217,12 @@ function mergeIconWeights(
       weights[iconId] = nextValue < 0 ? 0 : nextValue;
     });
   }
+
+  excludedIcons.forEach((iconId) => {
+    if (validIconIds.has(iconId)) {
+      weights[iconId] = 0;
+    }
+  });
 
   return { mergedWeights: weights, mergeErrors: errors };
 }

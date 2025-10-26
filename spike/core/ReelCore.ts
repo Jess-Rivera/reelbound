@@ -1,4 +1,4 @@
-import { IconId } from '../contracts/MainTypes';
+import { IconId, ReelState } from '../contracts/MainTypes';
 
 export type ReelPhase = 'idle' | 'accelerating' | 'spinning' | 'slowing' | 'stopped';
 
@@ -7,13 +7,6 @@ export interface ReelSpinConfig {
   deceleration?: number;
   maxSpeed?: number;
   holdDuration?: number;
-}
-
-export interface ReelStateSnapshot {
-  position: number;
-  velocity: number;
-  targetIndex: number | null;
-  phase: ReelPhase;
 }
 
 export interface ReelCoreOptions {
@@ -101,12 +94,19 @@ export class ReelCore {
   snapshot – capture state for debugging or serialization.
   Example: console.log(reel.snapshot());
   -------------------------------------------------------*/
-  snapshot(): ReelStateSnapshot {
+  snapshot(): ReelState {
+    const isStopped = this.phase === 'stopped';
+    const finalIndex = isStopped ? this.wrapIndex(Math.round(this.position)) : undefined;
+    const finalIcon = typeof finalIndex === 'number' ? this.symbols[finalIndex] : undefined;
+
     return {
+      strip: this.symbols.slice(),
       position: this.position,
+      offsetPx: 0,
       velocity: this.velocity,
-      targetIndex: this.targetIndex,
-      phase: this.phase
+      isStopped,
+      finalIndex,
+      finalIcon,
     };
   }
 

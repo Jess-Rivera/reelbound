@@ -1,7 +1,6 @@
-import { RNG } from '../contracts/MainTypes';
+import { Grid, IconId, ReelState, RNG } from '../contracts/MainTypes';
 import { ReelCore, ReelCoreOptions, ReelSpinConfig } from './ReelCore';
 import { ResolvedMachineSpec } from './machineLoader';
-import { IconId } from '../contracts/MainTypes';
 
 export interface ReelManagerOptions {
   machine: ResolvedMachineSpec;
@@ -38,12 +37,33 @@ export class ReelManager {
   }
 
   /*-------------------------------------------------------
-  getReels – access the underlying ReelCore instances.
-  Example: const reels = reelManager.getReels();
+  getReelCount �?" total number of managed reels.
+  Example: const count = reelManager.getReelCount();
   -------------------------------------------------------*/
-  getReels(): readonly ReelCore[] {
-    return this.reels;
+  getReelCount(): number {
+    return this.reels.length;
   }
+
+  /*-------------------------------------------------------
+  snapshotReel �?" capture a single reel state for diagnostics/ui.
+  Example: const reelState = reelManager.snapshotReel(0);
+  -------------------------------------------------------*/
+  snapshotReel(index: number): ReelState {
+    const reel = this.reels[index];
+    if (!reel) {
+      throw new Error(`[ReelManager] snapshotReel out of range (index: ${index})`);
+    }
+    return reel.snapshot();
+  }
+
+  /*-------------------------------------------------------
+  snapshotAll �?" capture state of every reel simultaneously.
+  Example: const reels = reelManager.snapshotAll();
+  -------------------------------------------------------*/
+  snapshotAll(): ReelState[] {
+    return this.reels.map((reel) => reel.snapshot());
+  }
+
 
   /*-------------------------------------------------------
   update – advance every reel by the elapsed time step.
@@ -77,6 +97,31 @@ export class ReelManager {
   }
 
   /*-------------------------------------------------------
+  forceStopAt �?" snap a specific reel to a target index immediately.
+  Example: reelManager.forceStopAt(1, 5);
+  -------------------------------------------------------*/
+  forceStopAt(index: number, targetIndex?: number): void {
+    const reel = this.reels[index];
+    if (!reel) {
+      throw new Error(`[ReelManager] forceStopAt out of range (index: ${index})`);
+    }
+    const stopIndex = targetIndex ?? Math.floor(reel.getPosition());
+    reel.forceStop(stopIndex);
+  }
+
+  /*-------------------------------------------------------
+  requestGracefulStop �?" ask a reel to glide to a halt.
+  Example: reelManager.requestGracefulStop(2);
+  -------------------------------------------------------*/
+  requestGracefulStop(index: number): void {
+    const reel = this.reels[index];
+    if (!reel) { 
+      throw new Error(`[ReelManager] requestGracefulStop out of range (index: ${index})`);
+    }
+    reel.spin({ targetIndex: null, config: { maxSpeed: 0 } });
+  }
+
+  /*-------------------------------------------------------
   isAllStopped – check whether every reel has finished spinning.
   Example: if (reelManager.isAllStopped()) { … }
   -------------------------------------------------------*/
@@ -88,10 +133,10 @@ export class ReelManager {
   getVisibleGrid – build the current icon grid from all reels.
   Example: const grid = reelManager.getVisibleGrid();
   -------------------------------------------------------*/
-  getVisibleGrid(): IconId[][] {
+  getVisibleGrid(): Grid<IconId> {
     const height = this.machine.spec.gridHeight;
     const width = this.machine.spec.gridWidth;
-    const grid: IconId[][] = Array.from({ length: height }, () => Array<IconId>(width));
+    const grid: Grid<IconId> = Array.from({ length: height }, () => Array<IconId>(width));
 
     this.reels.forEach((reel, column) => {
       const window = reel.getWindow();
